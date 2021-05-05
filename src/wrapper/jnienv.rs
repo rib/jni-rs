@@ -650,7 +650,7 @@ impl<'a> JNIEnv<'a> {
         class: T,
         method_id: U,
         ret: ReturnType,
-        args: &[JValue],
+        args: &[jvalue],
     ) -> Result<JValue<'a>>
     where
         T: Desc<'a, JClass<'c>>,
@@ -661,7 +661,6 @@ impl<'a> JNIEnv<'a> {
         let method_id = method_id.lookup(self)?.into_inner();
 
         let class = class.into_inner();
-        let args: Vec<jvalue> = args.iter().map(|v| v.to_jni()).collect();
         let jni_args = args.as_ptr();
 
         // TODO clean this up
@@ -767,7 +766,7 @@ impl<'a> JNIEnv<'a> {
         obj: O,
         method_id: T,
         ret: ReturnType,
-        args: &[JValue],
+        args: &[jvalue],
     ) -> Result<JValue<'a>>
     where
         O: Into<JObject<'a>>,
@@ -777,7 +776,6 @@ impl<'a> JNIEnv<'a> {
 
         let obj = obj.into().into_inner();
 
-        let args: Vec<jvalue> = args.iter().map(|v| v.to_jni()).collect();
         let jni_args = args.as_ptr();
 
         // TODO clean this up
@@ -864,7 +862,8 @@ impl<'a> JNIEnv<'a> {
 
         let class = self.auto_local(self.get_object_class(obj)?);
 
-        self.call_method_unchecked(obj, (&class, name, sig), parsed.ret, args)
+        let args: Vec<jvalue> = args.iter().map(|v| v.to_jni()).collect();
+        self.call_method_unchecked(obj, (&class, name, sig), parsed.ret, &args)
     }
 
     /// Calls a static method safely. This comes with a number of
@@ -899,7 +898,8 @@ impl<'a> JNIEnv<'a> {
         // and we'll need that for the next call.
         let class = class.lookup(self)?;
 
-        self.call_static_method_unchecked(class, (class, name, sig), parsed.ret, args)
+        let args: Vec<jvalue> = args.iter().map(|v| v.to_jni()).collect();
+        self.call_static_method_unchecked(class, (class, name, sig), parsed.ret, &args)
     }
 
     /// Create a new object using a constructor. This is done safely using
