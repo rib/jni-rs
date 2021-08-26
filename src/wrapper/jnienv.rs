@@ -8,6 +8,7 @@ use std::{
 
 use log::warn;
 
+use crate::signature::ReturnType;
 use crate::{
     descriptors::Desc,
     errors::*,
@@ -648,7 +649,7 @@ impl<'a> JNIEnv<'a> {
         &self,
         class: T,
         method_id: U,
-        ret: JavaType,
+        ret: ReturnType,
         args: &[JValue],
     ) -> Result<JValue<'a>>
     where
@@ -665,7 +666,7 @@ impl<'a> JNIEnv<'a> {
 
         // TODO clean this up
         Ok(match ret {
-            JavaType::Object(_) | JavaType::Array(_) => {
+            ReturnType::Object | ReturnType::Array => {
                 let obj: JObject = jni_non_void_call!(
                     self.internal,
                     CallStaticObjectMethodA,
@@ -676,9 +677,7 @@ impl<'a> JNIEnv<'a> {
                 .into();
                 obj.into()
             }
-            // JavaType::Object
-            JavaType::Method(_) => unimplemented!(),
-            JavaType::Primitive(p) => match p {
+            ReturnType::Primitive(p) => match p {
                 Primitive::Boolean => jni_non_void_call!(
                     self.internal,
                     CallStaticBooleanMethodA,
@@ -767,7 +766,7 @@ impl<'a> JNIEnv<'a> {
         &self,
         obj: O,
         method_id: T,
-        ret: JavaType,
+        ret: ReturnType,
         args: &[JValue],
     ) -> Result<JValue<'a>>
     where
@@ -783,15 +782,13 @@ impl<'a> JNIEnv<'a> {
 
         // TODO clean this up
         Ok(match ret {
-            JavaType::Object(_) | JavaType::Array(_) => {
+            ReturnType::Object | ReturnType::Array => {
                 let obj: JObject =
                     jni_non_void_call!(self.internal, CallObjectMethodA, obj, method_id, jni_args)
                         .into();
                 obj.into()
             }
-            // JavaType::Object
-            JavaType::Method(_) => unimplemented!(),
-            JavaType::Primitive(p) => match p {
+            ReturnType::Primitive(p) => match p {
                 Primitive::Boolean => {
                     jni_non_void_call!(self.internal, CallBooleanMethodA, obj, method_id, jni_args)
                         .into()
@@ -924,7 +921,7 @@ impl<'a> JNIEnv<'a> {
             return Err(Error::InvalidArgList(parsed));
         }
 
-        if parsed.ret != JavaType::Primitive(Primitive::Void) {
+        if parsed.ret != ReturnType::Primitive(Primitive::Void) {
             return Err(Error::InvalidCtorReturn);
         }
 
@@ -1565,7 +1562,7 @@ impl<'a> JNIEnv<'a> {
         &self,
         obj: O,
         field: T,
-        ty: JavaType,
+        ty: ReturnType,
     ) -> Result<JValue<'a>>
     where
         O: Into<JObject<'a>>,
@@ -1579,14 +1576,12 @@ impl<'a> JNIEnv<'a> {
 
         // TODO clean this up
         Ok(match ty {
-            JavaType::Object(_) | JavaType::Array(_) => {
+            ReturnType::Object | ReturnType::Array => {
                 let obj: JObject =
                     jni_non_void_call!(self.internal, GetObjectField, obj, field).into();
                 obj.into()
             }
-            // JavaType::Object
-            JavaType::Method(_) => unimplemented!(),
-            JavaType::Primitive(p) => match p {
+            ReturnType::Primitive(p) => match p {
                 Primitive::Boolean => {
                     jni_unchecked!(self.internal, GetBooleanField, obj, field).into()
                 }
@@ -1667,7 +1662,7 @@ impl<'a> JNIEnv<'a> {
         let obj = obj.into();
         let class = self.auto_local(self.get_object_class(obj)?);
 
-        let parsed = JavaType::from_str(ty.as_ref())?;
+        let parsed = ReturnType::from_str(ty.as_ref())?;
 
         let field_id: JFieldID = (&class, name, ty).lookup(self)?;
 
@@ -1840,7 +1835,7 @@ impl<'a> JNIEnv<'a> {
         // Check to see if we've already set this value. If it's not null, that
         // means that we're going to leak memory if it gets overwritten.
         let field_ptr = self
-            .get_field_unchecked(obj, field_id, JavaType::Primitive(Primitive::Long))?
+            .get_field_unchecked(obj, field_id, ReturnType::Primitive(Primitive::Long))?
             .j()? as *mut Mutex<T>;
         if !field_ptr.is_null() {
             return Err(Error::FieldAlreadySet(field.as_ref().to_owned()));
@@ -1895,7 +1890,7 @@ impl<'a> JNIEnv<'a> {
             let guard = self.lock_obj(obj)?;
 
             let ptr = self
-                .get_field_unchecked(obj, field_id, JavaType::Primitive(Primitive::Long))?
+                .get_field_unchecked(obj, field_id, ReturnType::Primitive(Primitive::Long))?
                 .j()? as *mut Mutex<T>;
 
             non_null!(ptr, "rust value from Java");
