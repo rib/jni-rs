@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 - `Default` trait implemented for `JObject`, `JString`, `JClass`, and `JByteBuffer` (#199)
+- `Debug` trait implemented for `JavaVM`, `GlobalRef`, `GlobalRefGuard`, `JStaticMethodID` and `ReleaseMode`
 - `ReturnType` for specifying object return types without a String allocation. (#329)
 
 ### Changed
