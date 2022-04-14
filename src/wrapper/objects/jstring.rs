@@ -6,7 +6,7 @@ use crate::{
 /// Lifetime'd representation of a `jstring`. Just a `JObject` wrapped in a new
 /// class.
 #[repr(transparent)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct JString<'a>(JObject<'a>);
 
 impl<'a> From<jstring> for JString<'a> {

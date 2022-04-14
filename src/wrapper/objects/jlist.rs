@@ -11,6 +11,7 @@ use crate::{
 ///
 /// Looks up the class and method ids on creation rather than for every method
 /// call.
+#[derive(Debug)]
 pub struct JList<'a: 'b, 'b> {
     internal: JObject<'a>,
     get: JMethodID<'a>,

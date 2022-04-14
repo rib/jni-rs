@@ -8,7 +8,7 @@ use crate::sys::jfieldID;
 /// be used in any of the extern function argument positions that would take a
 /// `jstaticfieldid`.
 #[repr(transparent)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct JStaticFieldID<'a> {
     internal: jfieldID,
     lifetime: PhantomData<&'a ()>,

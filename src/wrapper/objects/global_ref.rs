@@ -21,7 +21,7 @@ use crate::{errors::Result, objects::JObject, sys, JNIEnv, JavaVM};
 /// the `GlobalRef#drop` will print a warning and implicitly `attach` and `detach` it, which
 /// significantly affects performance.
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct GlobalRef {
     inner: Arc<GlobalRefGuard>,
 }
