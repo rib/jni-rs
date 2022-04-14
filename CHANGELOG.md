@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - The `release_string_utf_chars` function has been marked as unsafe. (#334)
 - The `call_*_method_unchecked` functions now take `jni:sys::jvalue` arguments to avoid allocating
   a `Vec` on each call to map + collect `JValue`s as `sys:jvalue`s (#329)
+- `JMethodID` implements `Send` + `Sync` and no longer has a lifetime parameter, making method
+  IDs cacheable (with a documented 'Safety' note about ensuring they remain valid).
 
 ## [0.19.0] — 2021-01-24
 
