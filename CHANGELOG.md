@@ -17,9 +17,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 - `Default` trait implemented for `JObject`, `JString`, `JClass`, and `JByteBuffer` (#199)
+- `ReturnType` for specifying object return types without a String allocation. (#329)
 
 ### Changed
 - The `release_string_utf_chars` function has been marked as unsafe. (#334)
+- The `call_*_method_unchecked` functions now take `jni:sys::jvalue` arguments to avoid allocating
+  a `Vec` on each call to map + collect `JValue`s as `sys:jvalue`s (#329)
 
 ## [0.19.0] — 2021-01-24
 
