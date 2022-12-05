@@ -7,7 +7,7 @@ use jni_sys::jvalue;
 use lazy_static::lazy_static;
 
 use jni::{
-    descriptors::Desc,
+    descriptors::FromEnvObject,
     objects::{JClass, JMethodID, JObject, JStaticMethodID, JValue},
     signature::{Primitive, ReturnType},
     sys::jint,
@@ -85,7 +85,7 @@ fn jni_int_call_static_unchecked<'c, C>(
     x: jint,
 ) -> jint
 where
-    C: Desc<'c, JClass<'c>>,
+    C: FromEnvObject<'c, JClass<'c>>,
 {
     let x = JValue::from(x);
     let ret = ReturnType::Primitive(Primitive::Int);
@@ -96,7 +96,7 @@ where
 
 fn jni_int_call_unchecked<'m, M>(env: &JNIEnv<'m>, obj: JObject<'m>, method_id: M) -> jint
 where
-    M: Desc<'m, JMethodID>,
+    M: FromEnvObject<'m, JMethodID>,
 {
     let ret = ReturnType::Primitive(Primitive::Int);
     // SAFETY: Caller retrieved method ID + class specifically for this use: Object.hashCode()I
@@ -111,7 +111,7 @@ fn jni_object_call_static_unchecked<'c, C>(
     args: &[jvalue],
 ) -> JObject<'c>
 where
-    C: Desc<'c, JClass<'c>>,
+    C: FromEnvObject<'c, JClass<'c>>,
 {
     // SAFETY: Caller retrieved method ID and constructed arguments
     let v = unsafe { env.call_static_method_unchecked(class, method_id, ReturnType::Object, args) }

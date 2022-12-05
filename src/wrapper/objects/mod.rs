@@ -2,6 +2,9 @@
 mod jvalue;
 pub use self::jvalue::*;
 
+mod jvalueowned;
+pub use self::jvalueowned::*;
+
 mod jmethodid;
 pub use self::jmethodid::*;
 

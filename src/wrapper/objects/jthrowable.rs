@@ -6,13 +6,21 @@ use crate::{
 /// Lifetime'd representation of a `jthrowable`. Just a `JObject` wrapped in a
 /// new class.
 #[repr(transparent)]
-#[derive(Clone, Copy)]
+#[derive(Debug)]
 pub struct JThrowable<'a>(JObject<'a>);
+
+impl<'a> super::IsObject for JThrowable<'a> {}
 
 impl<'a> ::std::ops::Deref for JThrowable<'a> {
     type Target = JObject<'a>;
 
     fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'a> AsRef<JObject<'a>> for JThrowable<'a> {
+    fn as_ref(&'_ self) -> &'_ JObject<'a> {
         &self.0
     }
 }

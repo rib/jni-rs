@@ -158,14 +158,15 @@ impl JavaVM {
     #[cfg(feature = "invocation")]
     pub fn new(args: InitArgs) -> StartJvmResult<Self> {
         Self::with_libjvm(args, || {
-            Ok([
+            let foo = Ok([
                 java_locator::locate_jvm_dyn_library()
                     .map_err(StartJvmError::NotFound)?
                     .as_str(),
                 java_locator::get_jvm_dyn_lib_file_name(),
             ]
             .iter()
-            .collect::<PathBuf>())
+            .collect::<PathBuf>());
+            foo
         })
     }
 

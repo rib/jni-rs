@@ -47,7 +47,7 @@ impl<'a, 'b> AutoPrimitiveArray<'a, 'b> {
         jni_unchecked!(
             self.env.get_native_interface(),
             ReleasePrimitiveArrayCritical,
-            *self.obj,
+            self.obj.internal,
             self.ptr.as_mut(),
             mode
         );
@@ -69,7 +69,7 @@ impl<'a, 'b> AutoPrimitiveArray<'a, 'b> {
 
     /// Returns the array size
     pub fn size(&self) -> Result<jsize> {
-        self.env.get_array_length(*self.obj)
+        self.env.get_array_length(self.obj.internal)
     }
 }
 

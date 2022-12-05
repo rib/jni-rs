@@ -12,7 +12,7 @@ use crate::{
 /// Looks up the class and method ids on creation rather than for every method
 /// call.
 pub struct JList<'a: 'b, 'b> {
-    internal: JObject<'a>,
+    internal: &'b JObject<'a>,
     get: JMethodID,
     add: JMethodID,
     add_idx: JMethodID,
@@ -29,8 +29,8 @@ impl<'a: 'b, 'b> ::std::ops::Deref for JList<'a, 'b> {
     }
 }
 
-impl<'a: 'b, 'b> From<JList<'a, 'b>> for JObject<'a> {
-    fn from(other: JList<'a, 'b>) -> JObject<'a> {
+impl<'a: 'b, 'b> From<JList<'a, 'b>> for &'b JObject<'a> {
+    fn from(other: JList<'a, 'b>) -> &'b JObject<'a> {
         other.internal
     }
 }
@@ -39,14 +39,14 @@ impl<'a: 'b, 'b> JList<'a, 'b> {
     /// Create a map from the environment and an object. This looks up the
     /// necessary class and method ids to call all of the methods on it so that
     /// exra work doesn't need to be done on every method call.
-    pub fn from_env(env: &'b JNIEnv<'a>, obj: JObject<'a>) -> Result<JList<'a, 'b>> {
+    pub fn from_env(env: &'b JNIEnv<'a>, obj: &'b JObject<'a>) -> Result<JList<'a, 'b>> {
         let class = env.auto_local(env.find_class("java/util/List")?);
 
-        let get = env.get_method_id(&class, "get", "(I)Ljava/lang/Object;")?;
-        let add = env.get_method_id(&class, "add", "(Ljava/lang/Object;)Z")?;
-        let add_idx = env.get_method_id(&class, "add", "(ILjava/lang/Object;)V")?;
-        let remove = env.get_method_id(&class, "remove", "(I)Ljava/lang/Object;")?;
-        let size = env.get_method_id(&class, "size", "()I")?;
+        let get = env.get_method_id(&*class, "get", "(I)Ljava/lang/Object;")?;
+        let add = env.get_method_id(&*class, "add", "(Ljava/lang/Object;)Z")?;
+        let add_idx = env.get_method_id(&*class, "add", "(ILjava/lang/Object;)V")?;
+        let remove = env.get_method_id(&*class, "remove", "(I)Ljava/lang/Object;")?;
+        let size = env.get_method_id(&*class, "size", "()I")?;
 
         Ok(JList {
             internal: obj,
@@ -83,7 +83,7 @@ impl<'a: 'b, 'b> JList<'a, 'b> {
     }
 
     /// Append an element to the list
-    pub fn add(&self, value: JObject<'a>) -> Result<()> {
+    pub fn add(&self, value: &'a JObject<'a>) -> Result<()> {
         // SAFETY: We keep the class loaded, and fetched the method ID for this function.
         // Provided argument is statically known as a JObject/null, rather than another primitive type.
         let result = unsafe {
@@ -100,7 +100,7 @@ impl<'a: 'b, 'b> JList<'a, 'b> {
     }
 
     /// Insert an element at a specific index
-    pub fn insert(&self, idx: jint, value: JObject<'a>) -> Result<()> {
+    pub fn insert(&self, idx: jint, value: &'a JObject<'a>) -> Result<()> {
         // SAFETY: We keep the class loaded, and fetched the method ID for this function.
         // Provided argument is statically known as a JObject/null, rather than another primitive type.
         let result = unsafe {

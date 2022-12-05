@@ -5,14 +5,16 @@ use crate::{
     JNIEnv,
 };
 
+use super::JClass;
+
 /// Wrapper for JObjects that implement `java/util/Map`. Provides methods to get
 /// and set entries and a way to iterate over key/value pairs.
 ///
 /// Looks up the class and method ids on creation rather than for every method
 /// call.
 pub struct JMap<'a: 'b, 'b> {
-    internal: JObject<'a>,
-    class: AutoLocal<'a, 'b>,
+    internal: &'b JObject<'a>,
+    class: AutoLocal<'a, 'b, JClass<'a>>,
     get: JMethodID,
     put: JMethodID,
     remove: JMethodID,
@@ -27,8 +29,8 @@ impl<'a: 'b, 'b> ::std::ops::Deref for JMap<'a, 'b> {
     }
 }
 
-impl<'a: 'b, 'b> From<JMap<'a, 'b>> for JObject<'a> {
-    fn from(other: JMap<'a, 'b>) -> JObject<'a> {
+impl<'a: 'b, 'b> From<JMap<'a, 'b>> for &'b JObject<'a> {
+    fn from(other: JMap<'a, 'b>) -> &'b JObject<'a> {
         other.internal
     }
 }
@@ -37,7 +39,7 @@ impl<'a: 'b, 'b> JMap<'a, 'b> {
     /// Create a map from the environment and an object. This looks up the
     /// necessary class and method ids to call all of the methods on it so that
     /// exra work doesn't need to be done on every method call.
-    pub fn from_env(env: &'b JNIEnv<'a>, obj: JObject<'a>) -> Result<JMap<'a, 'b>> {
+    pub fn from_env(env: &'b JNIEnv<'a>, obj: &'b JObject<'a>) -> Result<JMap<'a, 'b>> {
         let class = env.auto_local(env.find_class("java/util/Map")?);
 
         let get = env.get_method_id(&class, "get", "(Ljava/lang/Object;)Ljava/lang/Object;")?;
@@ -63,7 +65,7 @@ impl<'a: 'b, 'b> JMap<'a, 'b> {
 
     /// Look up the value for a key. Returns `Some` if it's found and `None` if
     /// a null pointer would be returned.
-    pub fn get(&self, key: JObject<'a>) -> Result<Option<JObject<'a>>> {
+    pub fn get(&self, key: &'a JObject<'a>) -> Result<Option<JObject<'a>>> {
         // SAFETY: We keep the class loaded, and fetched the method ID for this function.
         // Provided argument is statically known as a JObject/null, rather than another primitive type.
         let result = unsafe {
@@ -86,7 +88,7 @@ impl<'a: 'b, 'b> JMap<'a, 'b> {
 
     /// Look up the value for a key. Returns `Some` with the old value if the
     /// key already existed and `None` if it's a new key.
-    pub fn put(&self, key: JObject<'a>, value: JObject<'a>) -> Result<Option<JObject<'a>>> {
+    pub fn put(&self, key: &'a JObject<'a>, value: &'a JObject<'a>) -> Result<Option<JObject<'a>>> {
         // SAFETY: We keep the class loaded, and fetched the method ID for this function.
         // Provided argument is statically known as a JObject/null, rather than another primitive type.
         let result = unsafe {
@@ -109,7 +111,7 @@ impl<'a: 'b, 'b> JMap<'a, 'b> {
 
     /// Remove a value from the map. Returns `Some` with the removed value and
     /// `None` if there was no value for the key.
-    pub fn remove(&self, key: JObject<'a>) -> Result<Option<JObject<'a>>> {
+    pub fn remove(&self, key: &'a JObject<'a>) -> Result<Option<JObject<'a>>> {
         // SAFETY: We keep the class loaded, and fetched the method ID for this function.
         // Provided argument is statically known as a JObject/null, rather than another primitive type.
         let result = unsafe {
@@ -173,7 +175,7 @@ impl<'a: 'b, 'b> JMap<'a, 'b> {
             // SAFETY: We keep the class loaded, and fetched the method ID for this function. Arg list is known empty.
             let iter = unsafe {
                 self.env.call_method_unchecked(
-                    entry_set,
+                    &entry_set,
                     ("java/util/Set", "iterator", "()Ljava/util/Iterator;"),
                     ReturnType::Object,
                     &[],
@@ -206,14 +208,14 @@ pub struct JMapIter<'a, 'b, 'c> {
     next: JMethodID,
     get_key: JMethodID,
     get_value: JMethodID,
-    iter: AutoLocal<'a, 'b>,
+    iter: AutoLocal<'a, 'b, JObject<'a>>,
 }
 
 impl<'a: 'b, 'b: 'c, 'c> JMapIter<'a, 'b, 'c> {
     fn get_next(&self) -> Result<Option<(JObject<'a>, JObject<'a>)>> {
         // SAFETY: We keep the class loaded, and fetched the method ID for these functions. We know none expect args.
 
-        let iter = self.iter.as_obj();
+        let iter = self.iter.as_ref();
         let has_next = unsafe {
             self.map.env.call_method_unchecked(
                 iter,
@@ -227,24 +229,28 @@ impl<'a: 'b, 'b: 'c, 'c> JMapIter<'a, 'b, 'c> {
         if !has_next {
             return Ok(None);
         }
+
         let next = unsafe {
             self.map
                 .env
                 .call_method_unchecked(iter, self.next, ReturnType::Object, &[])
         }?
         .l()?;
+        // Since this local reference isn't being returned to the caller we need to
+        // make sure it gets deleted
+        let next = self.map.env.auto_local(next);
 
         let key = unsafe {
             self.map
                 .env
-                .call_method_unchecked(next, self.get_key, ReturnType::Object, &[])
+                .call_method_unchecked(&next, self.get_key, ReturnType::Object, &[])
         }?
         .l()?;
 
         let value = unsafe {
             self.map
                 .env
-                .call_method_unchecked(next, self.get_value, ReturnType::Object, &[])
+                .call_method_unchecked(&next, self.get_value, ReturnType::Object, &[])
         }?
         .l()?;
 

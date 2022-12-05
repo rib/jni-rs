@@ -3,7 +3,7 @@
 use std::{convert::TryFrom, str::FromStr};
 
 use jni::{
-    descriptors::Desc,
+    descriptors::FromEnvObject,
     errors::Error,
     objects::{
         AutoArray, AutoLocal, JByteBuffer, JList, JObject, JString, JThrowable, JValue, ReleaseMode,
@@ -1074,7 +1074,7 @@ pub fn test_invalid_list_get_string() {
 
 fn test_throwable_descriptor_with_default_type<'a, D>(env: &JNIEnv<'a>, descriptor: D)
 where
-    D: Desc<'a, JThrowable<'a>>,
+    D: FromEnvObject<'a, JThrowable<'a>>,
 {
     let result = descriptor.lookup(env);
     assert!(result.is_ok());

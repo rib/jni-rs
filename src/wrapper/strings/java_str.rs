@@ -11,7 +11,7 @@ use crate::{errors::*, objects::JString, strings::JNIStr, JNIEnv};
 /// conversion.
 pub struct JavaStr<'a: 'b, 'b> {
     internal: *const c_char,
-    obj: JString<'a>,
+    obj: &'b JString<'a>,
     env: &'b JNIEnv<'a>,
 }
 
@@ -41,7 +41,7 @@ impl<'a: 'b, 'b> JavaStr<'a, 'b> {
     /// is likely to crash or abort the process).
     unsafe fn get_string_utf_chars(
         env: &JNIEnv<'_>,
-        obj: JString<'_>,
+        obj: &JString<'_>,
     ) -> Result<(*const c_char, bool)> {
         non_null!(obj, "get_string_utf_chars obj argument");
         let mut is_copy: jboolean = 0;
@@ -79,7 +79,7 @@ impl<'a: 'b, 'b> JavaStr<'a, 'b> {
 
     /// Get a [JavaStr] from a [JNIEnv] and a [JString].
     /// You probably want [JNIEnv::get_string] instead of this method.
-    pub fn from_env(env: &'b JNIEnv<'a>, obj: JString<'a>) -> Result<Self> {
+    pub fn from_env(env: &'b JNIEnv<'a>, obj: &'b JString<'a>) -> Result<Self> {
         let (ptr, _) = unsafe { Self::get_string_utf_chars(env, obj)? };
         let java_str = JavaStr {
             internal: ptr,
@@ -132,7 +132,7 @@ impl<'a: 'b, 'b> JavaStr<'a, 'b> {
     /// // Do whatever you need with the pointer
     /// let java_str = unsafe { JavaStr::from_raw(env, jstring, ptr) };
     /// ```
-    pub unsafe fn from_raw(env: &'b JNIEnv<'a>, obj: JString<'a>, ptr: *const c_char) -> Self {
+    pub unsafe fn from_raw(env: &'b JNIEnv<'a>, obj: &'b JString<'a>, ptr: *const c_char) -> Self {
         Self {
             internal: ptr,
             obj,

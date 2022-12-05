@@ -23,49 +23,45 @@ use crate::{objects::JObject, JNIEnv};
 ///
 /// [spec-references]: https://docs.oracle.com/en/java/javase/12/docs/specs/jni/design.html#referencing-java-objects
 /// [android-jni-references]: https://developer.android.com/training/articles/perf-jni#local-and-global-references
-pub struct AutoLocal<'a: 'b, 'b> {
-    obj: JObject<'a>,
-    env: &'b JNIEnv<'a>,
+pub struct AutoLocal<'env, 'b, T: AsRef<JObject<'env>>> {
+    obj: T,
+    env: &'b JNIEnv<'env>,
 }
 
-impl<'a, 'b> AutoLocal<'a, 'b> {
+impl<'env, 'b, T: AsRef<JObject<'env>>> ::std::ops::Deref for AutoLocal<'env, 'b, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.obj
+    }
+}
+
+impl<'env, 'b, T: AsRef<JObject<'env>> + From<JObject<'env>>> AutoLocal<'env, 'b, T> {
     /// Creates a new auto-delete wrapper for a local ref.
     ///
     /// Once this wrapper goes out of scope, the `delete_local_ref` will be
     /// called on the object. While wrapped, the object can be accessed via
     /// the `Deref` impl.
-    pub fn new(env: &'b JNIEnv<'a>, obj: JObject<'a>) -> Self {
+    pub fn new(env: &'b JNIEnv<'env>, obj: T) -> Self {
         AutoLocal { obj, env }
     }
 
     /// Forget the wrapper, returning the original object.
     ///
     /// This prevents `delete_local_ref` from being called when the `AutoLocal`
-    /// gets
-    /// dropped. You must either remember to delete the local ref manually, or
-    /// be
-    /// ok with it getting deleted once the foreign method returns.
-    pub fn forget(self) -> JObject<'a> {
-        let obj = self.obj;
+    /// gets dropped. You must either remember to delete the local ref manually,
+    /// or be ok with it getting deleted once the foreign method returns.
+    pub fn forget(self) -> T {
+        let obj = unsafe { JObject::from_raw(self.as_ref().internal) };
         mem::forget(self);
-        obj
-    }
-
-    /// Get a reference to the wrapped object
-    ///
-    /// Unlike `forget`, this ensures the wrapper from being dropped while the
-    /// returned `JObject` is still live.
-    pub fn as_obj<'c>(&self) -> JObject<'c>
-    where
-        'a: 'c,
-    {
-        self.obj
+        obj.into()
     }
 }
 
-impl<'a, 'b> Drop for AutoLocal<'a, 'b> {
+impl<'env, 'b, T: AsRef<JObject<'env>>> Drop for AutoLocal<'env, 'b, T> {
     fn drop(&mut self) {
-        let res = self.env.delete_local_ref(self.obj);
+        let obj = unsafe { JObject::from_raw(self.as_ref().internal) };
+        let res = self.env.delete_local_ref(obj);
         match res {
             Ok(()) => {}
             Err(e) => debug!("error dropping global ref: {:#?}", e),
@@ -73,8 +69,17 @@ impl<'a, 'b> Drop for AutoLocal<'a, 'b> {
     }
 }
 
-impl<'a> From<&'a AutoLocal<'a, '_>> for JObject<'a> {
-    fn from(other: &'a AutoLocal) -> JObject<'a> {
+/*
+impl<'env, 'b, T: AsRef<JObject<'env>>> From<&'_ AutoLocal<'env, 'b, T>> for &'b JObject<'env> {
+    fn from(other: &'_ AutoLocal<'env, 'b, T>) -> Self {
         other.as_obj()
+    }
+}
+*/
+
+impl<'env, 'b, T: AsRef<JObject<'env>>> AsRef<JObject<'env>> for AutoLocal<'env, 'b, T>
+{
+    fn as_ref(&self) -> &JObject<'env> {
+        self.obj.as_ref()
     }
 }

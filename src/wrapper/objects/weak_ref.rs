@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, marker::PhantomData};
 
 use log::{debug, warn};
 
@@ -7,6 +7,8 @@ use crate::{
     objects::{GlobalRef, JObject},
     sys, JNIEnv, JavaVM,
 };
+
+use super::IsObject;
 
 /// A *weak* global JVM reference. These are global in scope like
 /// [`GlobalRef`], and may outlive the `JNIEnv` they came from, but are
@@ -25,8 +27,9 @@ use crate::{
 /// significantly affects performance.
 
 #[derive(Clone)]
-pub struct WeakRef {
+pub struct WeakRef<T: IsObject + 'static> {
     inner: Arc<WeakRefGuard>,
+    _lifetime: PhantomData<&'static T>
 }
 
 struct WeakRefGuard {
@@ -34,10 +37,10 @@ struct WeakRefGuard {
     vm: JavaVM,
 }
 
-unsafe impl Send for WeakRef {}
-unsafe impl Sync for WeakRef {}
+unsafe impl<T: IsObject> Send for WeakRef<T> {}
+unsafe impl<T: IsObject> Sync for WeakRef<T> {}
 
-impl WeakRef {
+impl<T: IsObject> WeakRef<T> {
     /// Creates a new wrapper for a global reference.
     ///
     /// # Safety
@@ -45,8 +48,9 @@ impl WeakRef {
     /// Expects a valid raw weak global reference that should be created with `NewWeakGlobalRef`
     /// JNI function.
     pub(crate) unsafe fn from_raw(vm: JavaVM, raw: sys::jweak) -> Self {
-        WeakRef {
+        WeakRef::<T> {
             inner: Arc::new(WeakRefGuard { raw, vm }),
+            _lifetime: PhantomData
         }
     }
 
@@ -82,12 +86,12 @@ impl WeakRef {
     ///
     /// If this method returns `Ok(Some(r))`, it is guaranteed that the object will not be garbage
     /// collected at least until `r` is dropped.
-    pub fn upgrade_global(&self, env: &JNIEnv) -> Result<Option<GlobalRef>> {
+    pub fn upgrade_global(&self, env: &JNIEnv) -> Result<Option<GlobalRef<T>>> {
         let r = env.new_global_ref(unsafe { JObject::from_raw(self.as_raw()) })?;
 
         // Unlike `NewLocalRef`, the JNI spec does *not* guarantee that `NewGlobalRef` will return a
         // null pointer if the object was GC'd, so we'll have to check.
-        if env.is_same_object(r.as_obj(), JObject::null())? {
+        if env.is_same_object(&r, &JObject::null())? {
             Ok(None)
         } else {
             Ok(Some(r))
@@ -119,9 +123,9 @@ impl WeakRef {
     /// collected.
     pub fn is_same_object<'a, O>(&self, env: &JNIEnv<'a>, object: O) -> Result<bool>
     where
-        O: Into<JObject<'a>>,
+        O: AsRef<JObject<'a>>,
     {
-        env.is_same_object(unsafe { JObject::from_raw(self.as_raw()) }, object)
+        env.is_same_object(unsafe { &JObject::from_raw(self.as_raw()) }, object)
     }
 
     /// Returns true if this weak reference refers to the same object as another weak reference.
@@ -129,7 +133,7 @@ impl WeakRef {
     ///
     /// This method will also return true if both weak references refer to an object that has been
     /// garbage collected.
-    pub fn is_weak_ref_to_same_object(&self, env: &JNIEnv, other: &WeakRef) -> Result<bool> {
+    pub fn is_weak_ref_to_same_object(&self, env: &JNIEnv, other: &WeakRef<T>) -> Result<bool> {
         self.is_same_object(env, unsafe { JObject::from_raw(other.as_raw()) })
     }
 
@@ -141,7 +145,7 @@ impl WeakRef {
     /// the JVM create a new weak reference, use this method instead of `Clone`.
     ///
     /// This method returns `Ok(None)` if the object has already been garbage collected.
-    pub fn clone_in_jvm(&self, env: &JNIEnv) -> Result<Option<WeakRef>> {
+    pub fn clone_in_jvm(&self, env: &JNIEnv) -> Result<Option<WeakRef<T>>> {
         env.new_weak_ref(unsafe { JObject::from_raw(self.as_raw()) })
     }
 }

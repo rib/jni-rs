@@ -1,39 +1,41 @@
 use crate::{
-    descriptors::Desc,
+    descriptors::FromEnvObject,
     errors::*,
     objects::{AutoLocal, GlobalRef, JClass, JObject},
     strings::JNIString,
     JNIEnv,
 };
 
-impl<'a, T> Desc<'a, JClass<'a>> for T
+use super::FromEnvValue;
+
+impl<'env, 'b, T> FromEnvObject<'env, 'b, JClass<'env>> for T
 where
     T: Into<JNIString>,
 {
-    fn lookup(self, env: &JNIEnv<'a>) -> Result<JClass<'a>> {
-        env.find_class(self)
+    fn lookup(self, env: &JNIEnv<'env>) -> Result<FromEnvValue<'env, 'b, JClass<'env>>> {
+        let class_obj = env.find_class(self)?;
+        Ok(FromEnvValue::Owned(env.auto_local(class_obj)))
     }
 }
 
-impl<'a, 'b> Desc<'a, JClass<'a>> for JObject<'b> {
-    fn lookup(self, env: &JNIEnv<'a>) -> Result<JClass<'a>> {
-        env.get_object_class(self)
+impl<'env, 'b> FromEnvObject<'env, 'b, JClass<'env>> for JObject<'env> {
+    fn lookup(self, env: &JNIEnv<'env>) -> Result<FromEnvValue<'env, 'b, JClass<'env>>> {
+        let class_obj = env.get_object_class(self)?;
+        Ok(FromEnvValue::Owned(env.auto_local(class_obj)))
     }
 }
 
 /// This conversion assumes that the `GlobalRef` is a pointer to a class object.
-impl<'a, 'b> Desc<'a, JClass<'b>> for &'b GlobalRef {
-    fn lookup(self, _: &JNIEnv<'a>) -> Result<JClass<'b>> {
-        Ok(self.as_obj().into())
+impl<'env, 'b, 'c> FromEnvObject<'env, 'b, JClass<'env>> for &'c GlobalRef<JClass<'env>> {
+    fn lookup(self, _: &JNIEnv<'env>) -> Result<FromEnvValue<'env, 'b, JClass<'env>>> {
+        Ok(FromEnvValue::Reference(self.as_ref()))
     }
 }
 
 /// This conversion assumes that the `AutoLocal` is a pointer to a class object.
-impl<'a, 'b, 'c> Desc<'a, JClass<'b>> for &'b AutoLocal<'c, '_>
-where
-    'c: 'b,
+impl<'env, 'b, 'c> FromEnvObject<'env, 'b, JClass<'env>> for &'c AutoLocal<'env, 'b, JClass<'env>>
 {
-    fn lookup(self, _: &JNIEnv<'a>) -> Result<JClass<'b>> {
-        Ok(self.as_obj().into())
+    fn lookup<'d>(self, _: &'d JNIEnv<'env>) -> Result<FromEnvValue<'env, 'b, JClass<'env>>> {
+        Ok(FromEnvValue::Reference(self.as_ref()))
     }
 }

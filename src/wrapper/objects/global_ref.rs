@@ -1,8 +1,10 @@
-use std::{convert::From, sync::Arc};
+use std::{convert::From, sync::Arc, mem::transmute};
 
 use log::{debug, warn};
 
 use crate::{errors::Result, objects::JObject, sys, JNIEnv, JavaVM};
+
+use super::{JClass, IsObject};
 
 /// A global JVM reference. These are "pinned" by the garbage collector and are
 /// guaranteed to not get collected until released. Thus, this is allowed to
@@ -22,26 +24,34 @@ use crate::{errors::Result, objects::JObject, sys, JNIEnv, JavaVM};
 /// significantly affects performance.
 
 #[derive(Clone, Debug)]
-pub struct GlobalRef {
-    inner: Arc<GlobalRefGuard>,
+pub struct GlobalRef<T: IsObject + 'static> {
+    inner: Arc<GlobalRefGuard<T>>,
 }
 
 #[derive(Debug)]
-struct GlobalRefGuard {
-    obj: JObject<'static>,
+struct GlobalRefGuard<T: IsObject + 'static> {
+    obj: T,
     vm: JavaVM,
 }
 
-unsafe impl Send for GlobalRef {}
-unsafe impl Sync for GlobalRef {}
+unsafe impl<T: IsObject> Send for GlobalRef<T> {}
+unsafe impl<T: IsObject> Sync for GlobalRef<T> {}
 
-impl<'a> From<&'a GlobalRef> for JObject<'a> {
-    fn from(other: &'a GlobalRef) -> JObject<'a> {
-        other.as_obj()
+impl<T: IsObject> AsRef<JObject<'static>> for GlobalRef<T> {
+    fn as_ref(&self) -> &JObject<'static> {
+        &*self
     }
 }
 
-impl GlobalRef {
+impl<T: IsObject> ::std::ops::Deref for GlobalRef<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner.obj
+    }
+}
+
+impl<T: IsObject> GlobalRef<T> {
     /// Creates a new wrapper for a global reference.
     ///
     /// # Safety
@@ -52,17 +62,9 @@ impl GlobalRef {
             inner: Arc::new(GlobalRefGuard::from_raw(vm, raw_global_ref)),
         }
     }
-
-    /// Get the object from the global ref
-    ///
-    /// This borrows the ref and prevents it from being dropped as long as the
-    /// JObject sticks around.
-    pub fn as_obj(&self) -> JObject {
-        self.inner.as_obj()
-    }
 }
 
-impl GlobalRefGuard {
+impl<T: IsObject> GlobalRefGuard<T> {
     /// Creates a new global reference guard. This assumes that `NewGlobalRef`
     /// has already been called.
     unsafe fn from_raw(vm: JavaVM, obj: sys::jobject) -> Self {
@@ -71,32 +73,24 @@ impl GlobalRefGuard {
             vm,
         }
     }
-
-    /// Get the object from the global ref
-    ///
-    /// This borrows the ref and prevents it from being dropped as long as the
-    /// JObject sticks around.
-    pub fn as_obj(&self) -> JObject {
-        self.obj
-    }
 }
 
-impl Drop for GlobalRefGuard {
+impl<T: IsObject> Drop for GlobalRefGuard<T> {
     fn drop(&mut self) {
-        fn drop_impl(env: &JNIEnv, global_ref: JObject) -> Result<()> {
+        fn drop_impl(env: &JNIEnv, global_ref: crate::sys::jobject) -> Result<()> {
             let internal = env.get_native_interface();
             // This method is safe to call in case of pending exceptions (see chapter 2 of the spec)
-            jni_unchecked!(internal, DeleteGlobalRef, global_ref.into_raw());
+            jni_unchecked!(internal, DeleteGlobalRef, global_ref);
             Ok(())
         }
 
         let res = match self.vm.get_env() {
-            Ok(env) => drop_impl(&env, self.as_obj()),
+            Ok(env) => drop_impl(&env, self.obj.internal),
             Err(_) => {
                 warn!("Dropping a GlobalRef in a detached thread. Fix your code if this message appears frequently (see the GlobalRef docs).");
                 self.vm
                     .attach_current_thread()
-                    .and_then(|env| drop_impl(&env, self.as_obj()))
+                    .and_then(|env| drop_impl(&env, self.obj.internal))
             }
         };
 

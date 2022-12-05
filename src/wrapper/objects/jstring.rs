@@ -6,14 +6,22 @@ use crate::{
 /// Lifetime'd representation of a `jstring`. Just a `JObject` wrapped in a new
 /// class.
 #[repr(transparent)]
-#[derive(Clone, Copy)]
+#[derive(Debug)]
 pub struct JString<'a>(JObject<'a>);
+
+impl<'a> super::IsObject for JString<'a> {}
 
 impl<'a> ::std::ops::Deref for JString<'a> {
     type Target = JObject<'a>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl<'a> AsRef<JObject<'a>> for JString<'a> {
+    fn as_ref(&'_ self) -> &'_ JObject<'a> {
+        self
     }
 }
 
