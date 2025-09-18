@@ -1,4 +1,4 @@
-use std::{borrow::Cow, ops::Deref};
+use std::{borrow::Cow, cell::Ref, ops::Deref};
 
 use jni_sys::jobject;
 use log::{debug, warn};
@@ -85,7 +85,7 @@ use super::Reference;
 /// message is [logged][log] at [`log::Level::Warn`].
 #[repr(transparent)]
 #[derive(Debug)]
-pub struct Global<T>
+pub struct Global<T = JObject<'static>>
 where
     T: Into<JObject<'static>>
         + AsRef<JObject<'static>>
@@ -196,8 +196,28 @@ where
     /// # Safety
     ///
     /// If the given reference is non-null, it must represent a global JNI reference.
-    pub unsafe fn new(_env: &Env, obj: T) -> Self {
-        Self { obj }
+    //pub unsafe fn new(_env: &Env, obj: T) -> Self {
+    //    Self { obj }
+    //}
+
+    /// Creates a [`Global`] wrapper from a raw JNI global reference.
+    ///
+    /// See [`Env::new_global_ref`] for a safe way to create a global reference.
+    ///
+    /// The [`Env`] reference here serves as proof that the current thread is attached, which
+    /// implies [`JavaVM::singleton()`] is initialized, which is required by the `Drop`
+    /// implementation.
+    ///
+    /// # Safety
+    ///
+    /// If the given reference is non-null, it must represent a global JNI reference.
+    ///
+    /// There must be no other auto-delete wrapper for the same reference.
+    pub unsafe fn from_raw<R: Reference>(_env: &Env, raw: jobject) -> Global<R::GlobalKind> {
+        // SAFETY: The caller promises that `raw` is a valid global reference or null
+        // and the caller promises that there's no other wrapper for the same reference.
+        let obj = unsafe { R::global_kind_from_raw(raw) };
+        Global { obj }
     }
 
     /// Creates a [`Global`] wrapper for a `null` reference

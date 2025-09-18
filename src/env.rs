@@ -1040,13 +1040,8 @@ impl<'local> Env<'local> {
         // - we know there's no other wrapper for the reference passed to from_global_raw
         //   since we have just created it.
         let global_ref = unsafe {
-            let global_ref = O::global_kind_from_raw(jni_call_unchecked!(
-                self,
-                v1_1,
-                NewGlobalRef,
-                obj.as_raw()
-            ));
-            Global::new(self, global_ref)
+            let global_raw = jni_call_unchecked!(self, v1_1, NewGlobalRef, obj.as_raw());
+            Global::from_raw::<O>(self, global_raw)
         };
 
         // Per JNI spec, `NewGlobalRef` will return a null pointer if the object was GC'd
