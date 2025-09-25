@@ -1,46 +1,26 @@
-use std::{borrow::Cow, ops::Deref};
-
 use crate::{
     env::Env,
     errors::Result,
-    objects::{Cast, Global, JClass, JCollection, JIterator, JObject, LoaderContext},
+    objects::{Global, JClass, JCollection, JIterator, JObject},
 };
-
-use super::Reference as _;
 
 #[cfg(doc)]
 use crate::errors::Error;
-
-impl<'local> From<JSet<'local>> for JCollection<'local> {
-    fn from(other: JSet<'local>) -> JCollection<'local> {
-        // SAFETY: Any `java.lang.Set` is also a `java.util.Collection`
-        unsafe { JCollection::kind_from_raw(other.into_raw()) }
-    }
-}
 
 struct JSetAPI {
     class: Global<JClass<'static>>,
 }
 
 crate::define_reference_type!(
-    JSet,
-    "java.util.Set",
-    |env: &mut Env, loader_context: &LoaderContext| {
-        let class = loader_context.load_class_for_type::<JSet>(true, env)?;
-        let class = env.new_global_ref(&class).unwrap();
-        Ok(Self { class })
-    }
+    type = JSet,
+    class = "java.util.Set",
+    init = |env, class| {
+        Ok(Self { class: env.new_global_ref(&class)? })
+    },
+    as = [ as_collection = JCollection ]
 );
 
 impl<'local> JSet<'local> {
-    /// Casts this `JSet` to a `JCollection`
-    ///
-    /// This does not require a runtime type check since any `java.lang.Set` is also a `java.util.Collection`
-    pub fn as_collection(&self) -> Cast<'local, '_, JCollection<'local>> {
-        // SAFETY: we know that any `java.lang.Set` is also a `java.util.Collection`
-        unsafe { Cast::<JCollection>::new_unchecked(self) }
-    }
-
     /// Adds the given element to this set if it is not already present
     ///
     /// Returns `true` if the element was added, `false` if it was already present.

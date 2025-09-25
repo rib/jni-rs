@@ -1,5 +1,3 @@
-use std::{borrow::Cow, ops::Deref};
-
 use crate::{
     env::Env,
     errors::Result,
@@ -19,27 +17,26 @@ struct JClassAPI {
 }
 
 crate::define_reference_type!(
-    JClass,
-    "java.lang.Class",
-    |env: &mut Env, _loader_context: &LoaderContext| {
-        // As a special-case; we ignore loader_context just to be clear that there's no risk of
+    type = JClass,
+    class = "java.lang.Class",
+    raw = jclass,
+    init_with_loader = |env, _loader_context| {
+        // As a special-case; we ignore loader_context and use `env.find_class` just to be clear that there's no risk of
         // recursion. (`LoaderContext::load_class` depends on the `JClassAPI`)
         let class = env.find_class(JNIStr::from_cstr(c"java/lang/Class"))?;
-        let class = env.new_global_ref(class)?;
-        let get_class_loader_method =
-            env.get_method_id(&class, c"getClassLoader", c"()Ljava/lang/ClassLoader;")?;
-        let for_name_method =
-            env.get_static_method_id(&class, c"forName", c"(Ljava/lang/String;)Ljava/lang/Class;")?;
-        let for_name_with_loader_method = env.get_static_method_id(
-            &class,
-            c"forName",
-            c"(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;",
-        )?;
         Ok(Self {
-            class,
-            get_class_loader_method,
-            for_name_method,
-            for_name_with_loader_method,
+            class: env.new_global_ref(&class)?,
+            get_class_loader_method: env.get_method_id(&class, c"getClassLoader", c"()Ljava/lang/ClassLoader;")?,
+            for_name_method: env.get_static_method_id(
+                &class,
+                c"forName",
+                c"(Ljava/lang/String;)Ljava/lang/Class;",
+            )?,
+            for_name_with_loader_method: env.get_static_method_id(
+                &class,
+                c"forName",
+                c"(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;",
+            )?,
         })
     }
 );

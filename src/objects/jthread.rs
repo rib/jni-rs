@@ -1,5 +1,3 @@
-use std::{borrow::Cow, ops::Deref};
-
 use crate::{
     env::Env,
     errors::Result,
@@ -10,6 +8,9 @@ use crate::{
     strings::JNIStr,
     sys::jstring,
 };
+
+#[cfg(doc)]
+use crate::errors::Error;
 
 struct JThreadAPI {
     class: Global<JClass<'static>>,
@@ -22,47 +23,33 @@ struct JThreadAPI {
 }
 
 crate::define_reference_type!(
-    JThread,
-    "java.lang.Thread",
-    |env: &mut Env, _loader_context: &LoaderContext| {
-        // As a special-case; we ignore loader_context just to be clear that there's no risk of
+    type = JThread,
+    class = "java.lang.Thread",
+    raw = jobject,
+    init_with_loader = |env, _loader_context| {
+        // As a special-case; we ignore loader_context and use `env.find_class` just to be clear that there's no risk of
         // recursion. (`LoaderContext::load_class` depends on the `JThreadAPI`)
         let class = env.find_class(JNIStr::from_cstr(c"java/lang/Thread"))?;
-        let class = env.new_global_ref(&class).unwrap();
-        let current_thread_method = env
-            .get_static_method_id(&class, c"currentThread", c"()Ljava/lang/Thread;")
-            .expect("Thread.currentThread method not found");
-        let get_name_method = env
-            .get_method_id(&class, c"getName", c"()Ljava/lang/String;")
-            .expect("Thread.getName method not found");
-        let set_name_method = env
-            .get_method_id(&class, c"setName", c"(Ljava/lang/String;)V")
-            .expect("Thread.setName method not found");
-        let get_id_method = env
-            .get_method_id(&class, c"getId", c"()J")
-            .expect("Thread.getId method not found");
-        let get_context_class_loader_method = env
-            .get_method_id(
+        Ok(Self {
+            class: env.new_global_ref(&class)?,
+            current_thread_method: env.get_static_method_id(
+                &class,
+                c"currentThread",
+                c"()Ljava/lang/Thread;",
+            )?,
+            get_name_method: env.get_method_id(&class, c"getName", c"()Ljava/lang/String;")?,
+            set_name_method: env.get_method_id(&class, c"setName", c"(Ljava/lang/String;)V")?,
+            get_id_method: env.get_method_id(&class, c"getId", c"()J")?,
+            get_context_class_loader_method: env.get_method_id(
                 &class,
                 c"getContextClassLoader",
                 c"()Ljava/lang/ClassLoader;",
-            )
-            .expect("Thread.getContextClassLoader method not found");
-        let set_context_class_loader_method = env
-            .get_method_id(
+            )?,
+            set_context_class_loader_method: env.get_method_id(
                 &class,
                 c"setContextClassLoader",
                 c"(Ljava/lang/ClassLoader;)V",
-            )
-            .expect("Thread.setContextClassLoader method not found");
-        Ok(Self {
-            class,
-            current_thread_method,
-            get_name_method,
-            set_name_method,
-            get_id_method,
-            get_context_class_loader_method,
-            set_context_class_loader_method,
+            )?,
         })
     }
 );

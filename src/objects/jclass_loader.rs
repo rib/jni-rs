@@ -1,5 +1,3 @@
-use std::{borrow::Cow, ops::Deref};
-
 use crate::{
     env::Env,
     errors::Result,
@@ -9,27 +7,29 @@ use crate::{
     sys::jclass,
 };
 
+#[cfg(doc)]
+use crate::errors::Error;
+
 struct JClassLoaderAPI {
     class: Global<JClass<'static>>,
     load_class_method: JMethodID,
 }
 
 crate::define_reference_type!(
-    JClassLoader,
-    "java.lang.ClassLoader",
-    |env: &mut Env, _loader_context: &LoaderContext| {
-        // As a special-case; we ignore loader_context just to be clear that there's no risk of
+    type = JClassLoader,
+    class = "java.lang.ClassLoader",
+    raw = jobject,
+    init_with_loader = |env, _loader_context| {
+        // As a special-case; we ignore loader_context and use `env.find_class` just to be clear that there's no risk of
         // recursion. (`LoaderContext::load_class` depends on the `JClassLoaderAPI`)
-        let class = env.find_class(JNIStr::from_cstr(c"java/lang/ClassLoader"))?;
-        let class = env.new_global_ref(&class).unwrap();
-        let load_class_method = env.get_method_id(
-            &class,
-            c"loadClass",
-            c"(Ljava/lang/String;)Ljava/lang/Class;",
-        )?;
+        let class = env.find_class(c"java/lang/ClassLoader")?;
         Ok(Self {
-            class,
-            load_class_method,
+            class: env.new_global_ref(&class)?,
+            load_class_method: env.get_method_id(
+                &class,
+                c"loadClass",
+                c"(Ljava/lang/String;)Ljava/lang/Class;",
+            )?,
         })
     }
 );

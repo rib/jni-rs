@@ -1,22 +1,13 @@
 use crate::{
     errors::*,
     objects::{
-        Cast, Global, JClass, JCollection, JIterator, JMethodID, JObject, JValue, LoaderContext,
+        Global, JClass, JCollection, JIterator, JMethodID, JObject, JValue, LoaderContext,
         Reference,
     },
     signature::{Primitive, ReturnType},
     sys::jint,
     Env,
 };
-
-use std::{borrow::Cow, ops::Deref};
-
-impl<'local> From<JList<'local>> for JCollection<'local> {
-    fn from(other: JList<'local>) -> JCollection<'local> {
-        // SAFETY: Any `java.lang.List` is also a `java.util.Collection`
-        unsafe { JCollection::kind_from_raw(other.into_raw()) }
-    }
-}
 
 struct JListAPI {
     class: Global<JClass<'static>>,
@@ -26,21 +17,17 @@ struct JListAPI {
 }
 
 crate::define_reference_type!(
-    JList,
-    "java.util.List",
-    |env: &mut Env, loader_context: &LoaderContext| {
-        let class = loader_context.load_class_for_type::<JList>(true, env)?;
-        let get_method = env.get_method_id(&class, c"get", c"(I)Ljava/lang/Object;")?;
-        let add_idx_method = env.get_method_id(&class, c"add", c"(ILjava/lang/Object;)V")?;
-        let remove_method = env.get_method_id(&class, c"remove", c"(I)Ljava/lang/Object;")?;
-
+    type = JList,
+    class = "java.util.List",
+    init = |env, class| {
         Ok(Self {
-            class: env.new_global_ref(&class)?,
-            get_method,
-            add_idx_method,
-            remove_method,
+            class: env.new_global_ref(class)?,
+            get_method: env.get_method_id(class, c"get", c"(I)Ljava/lang/Object;")?,
+            add_idx_method: env.get_method_id(class, c"add", c"(ILjava/lang/Object;)V")?,
+            remove_method: env.get_method_id(class, c"remove", c"(I)Ljava/lang/Object;")?,
         })
-    }
+    },
+    as = [ as_collection = JCollection ]
 );
 
 impl<'local> JList<'local> {
@@ -56,14 +43,6 @@ impl<'local> JList<'local> {
         env: &mut Env<'_>,
     ) -> Result<JList<'any_local>> {
         env.cast_local::<JList>(obj)
-    }
-
-    /// Casts this `JList` to a `JCollection`
-    ///
-    /// This does not require a runtime type check since any `java.lang.List` is also a `java.util.Collection`
-    pub fn as_collection(&self) -> Cast<'local, '_, JCollection<'local>> {
-        // SAFETY: we know that any `java.lang.List` is also a `java.util.Collection`
-        unsafe { Cast::<JCollection>::new_unchecked(self) }
     }
 
     /// Look up the value for a key. Returns `Some` if it's found and `None` if
