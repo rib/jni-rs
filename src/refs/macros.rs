@@ -171,17 +171,14 @@ Returns [Error::WrongObjectType] if the `IsInstanceOf` check fails.
             }
 
             // ---------- Safe upcasts ----------
-            /* FIXME: refer to Aliases
             $(
-                impl<'l> From<$Type<'l>> for $AsTy<'l> {
-                    #[inline]
-                    fn from(value: $Type<'l>) -> $AsTy<'l> {
-                        let raw = value.into_jobject_raw();
-                        unsafe { <$AsTy as $crate::refs::Reference>::kind_from_raw(raw) }
+                impl<'l> From<$Type<'l>> for $Aliases<'l> {
+                    fn from(value: $Type<'l>) -> $Aliases<'l> {
+                        let raw = value.into_raw();
+                        unsafe { <$Aliases as $crate::refs::Reference>::kind_from_raw(raw) }
                     }
                 }
             )*
-            */
 
             // ---------- Reference impl ----------
             unsafe impl $crate::refs::Reference for $Type<'_> {

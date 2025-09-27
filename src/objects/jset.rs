@@ -4,17 +4,8 @@ use crate::{
     objects::{Cast, Global, JClass, JCollection, JIterator, JObject},
 };
 
-use super::Reference as _;
-
 #[cfg(doc)]
 use crate::errors::Error;
-
-impl<'local> From<JSet<'local>> for JCollection<'local> {
-    fn from(other: JSet<'local>) -> JCollection<'local> {
-        // SAFETY: Any `java.lang.Set` is also a `java.util.Collection`
-        unsafe { JCollection::kind_from_raw(other.into_raw()) }
-    }
-}
 
 struct JSetAPI {
     class: Global<JClass<'static>>,
@@ -25,7 +16,8 @@ crate::define_reference_type!(
     class = "java.util.Set",
     init = |env, class| {
         Ok(Self { class: env.new_global_ref(&class)? })
-    }
+    },
+    as = [ JCollection ]
 );
 
 impl<'local> JSet<'local> {

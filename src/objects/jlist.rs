@@ -9,13 +9,6 @@ use crate::{
     Env,
 };
 
-impl<'local> From<JList<'local>> for JCollection<'local> {
-    fn from(other: JList<'local>) -> JCollection<'local> {
-        // SAFETY: Any `java.lang.List` is also a `java.util.Collection`
-        unsafe { JCollection::kind_from_raw(other.into_raw()) }
-    }
-}
-
 struct JListAPI {
     class: Global<JClass<'static>>,
     get_method: JMethodID,
@@ -33,7 +26,8 @@ crate::define_reference_type!(
             add_idx_method: env.get_method_id(class, c"add", c"(ILjava/lang/Object;)V")?,
             remove_method: env.get_method_id(class, c"remove", c"(I)Ljava/lang/Object;")?,
         })
-    }
+    },
+    as = [ JCollection ]
 );
 
 impl<'local> JList<'local> {
