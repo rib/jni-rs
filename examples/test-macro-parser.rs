@@ -128,7 +128,6 @@ macro_rules! __drt__emit_with_api {
         $Type:ident,
         $Class:expr,
         $RawIdent:ident,
-        $RawTy:path,
         $InitKind:ident,
         $Init:expr,
         [ $($Aliases:tt)* ],
@@ -142,7 +141,7 @@ macro_rules! __drt__emit_with_api {
             fn get() -> Self {
                 println!("Generated API for type: {}", stringify!($Type));
                 println!("Class: {}", $Class);
-                println!("Raw ident: {}", stringify!($RawIdent));
+                println!("Raw type: {}", stringify!($crate::sys::$RawIdent));
                 println!("Init tokens: {}", stringify!($Init));
                 println!("Aliases: [{}]", stringify!($($Aliases)*));
                 println!("Methods: {{ {} }}", stringify!($($Methods)*));
@@ -164,8 +163,7 @@ macro_rules! __define_reference_type_gen {
     (
         type      = $Type:ident,
         class     = $Class:expr,
-        raw_ident = $RawIdent:ident,
-        raw_path  = $RawTy:path,
+        raw       = $RawIdent:ident,
         api       = $ApiName:ident,
         init_kind = $InitKind:ident,
         init      = $Init:expr,
@@ -183,7 +181,6 @@ macro_rules! __define_reference_type_gen {
             $Type,
             $Class,
             $RawIdent,
-            $RawTy,
             $InitKind,
             $Init,
             [ $($Aliases)* ],
@@ -214,8 +211,7 @@ macro_rules! __drt__emit_init_wrapper {
         $crate::__define_reference_type_gen! {
             type      = $Type,
             class     = $Class,
-            raw_ident = $RawIdent,
-            raw_path  = $crate::sys::$RawIdent,
+            raw       = $RawIdent,
             api       = $Api,
             init_kind = $InitKind,
             init      = $InitExpr,

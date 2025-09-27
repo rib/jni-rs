@@ -147,11 +147,11 @@ the returned [`"#, stringify!($Type), r#"`] always has the `'static` lifetime."#
 This will do a runtime (`IsInstanceOf`) check that the object is an instance of `"#, $Class, r#"`.
 
 Also see these other options for casting local or global references to a [`"#, stringify!($Type), r#"`]:
-- [Env::as_cast]
-- [Env::new_cast_local_ref]
-- [Env::cast_local]
-- [Env::new_cast_global_ref]
-- [Env::cast_global]
+- [Env::as_cast](crate::Env::as_cast)
+- [Env::new_cast_local_ref](crate::Env::new_cast_local_ref)
+- [Env::cast_local](crate::Env::cast_local)
+- [Env::new_cast_global_ref](crate::Env::new_cast_global_ref)
+- [Env::cast_global](crate::Env::cast_global)
 
 # Errors
 
