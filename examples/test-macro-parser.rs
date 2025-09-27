@@ -127,7 +127,7 @@ macro_rules! __drt__emit_with_api {
         $ApiTy:ident,
         $Type:ident,
         $Class:expr,
-        $RawIdent:ident,
+        $RawTy:ident,
         $InitKind:ident,
         $Init:expr,
         [ $($Aliases:tt)* ],
@@ -141,7 +141,7 @@ macro_rules! __drt__emit_with_api {
             fn get() -> Self {
                 println!("Generated API for type: {}", stringify!($Type));
                 println!("Class: {}", $Class);
-                println!("Raw type: {}", stringify!($crate::sys::$RawIdent));
+                println!("Raw type: {}", stringify!($crate::sys::$RawTy));
                 println!("Init tokens: {}", stringify!($Init));
                 println!("Aliases: [{}]", stringify!($($Aliases)*));
                 println!("Methods: {{ {} }}", stringify!($($Methods)*));
@@ -163,7 +163,7 @@ macro_rules! __define_reference_type_gen {
     (
         type      = $Type:ident,
         class     = $Class:expr,
-        raw       = $RawIdent:ident,
+        raw       = $RawTy:ident,
         api       = $ApiName:ident,
         init_kind = $InitKind:ident,
         init      = $Init:expr,
@@ -180,7 +180,7 @@ macro_rules! __define_reference_type_gen {
             __drt__emit_with_api,
             $Type,
             $Class,
-            $RawIdent,
+            $RawTy,
             $InitKind,
             $Init,
             [ $($Aliases)* ],
@@ -969,6 +969,258 @@ macro_rules! __def_ref_parse {
         }
     };
 
+    // --- methods = { ... } ---
+    (@parse
+        (
+            type = $Type:ident, class = $Class:expr,
+            raw = $Raw:ident, api = $Api:ident,
+            init = __drt_Closure($Init:tt),
+            init_with_loader = __drt_Closure($InitWithLoader:tt),
+            aliases = [ $($Aliases:tt)* ],
+            methods = { $($OldMethods:tt)* },
+            static_methods = { $($StaticMethods:tt)* },
+            fields = { $($Fields:tt)* },
+            static_fields = { $($StaticFields:tt)* },
+        )
+        methods = { $($NewMethods:tt)* },
+        $($rest:tt)*
+    ) => {
+        $crate::__def_ref_parse! {
+            @parse
+            (
+                type = $Type, class = $Class,
+                raw = $Raw, api = $Api,
+                init = __drt_Closure($Init),
+                init_with_loader = __drt_Closure($InitWithLoader),
+                aliases = [ $($Aliases)* ],
+                methods = { $($NewMethods)* },
+                static_methods = { $($StaticMethods)* },
+                fields = { $($Fields)* },
+                static_fields = { $($StaticFields)* },
+            )
+            , $($rest)*
+        }
+    };
+
+    (@parse
+        (
+            type = $Type:ident, class = $Class:expr,
+            raw = $Raw:ident, api = $Api:ident,
+            init = __drt_Closure($Init:tt),
+            init_with_loader = __drt_Closure($InitWithLoader:tt),
+            aliases = [ $($Aliases:tt)* ],
+            methods = { $($OldMethods:tt)* },
+            static_methods = { $($StaticMethods:tt)* },
+            fields = { $($Fields:tt)* },
+            static_fields = { $($StaticFields:tt)* },
+        )
+        methods = { $($NewMethods:tt)* }
+    ) => {
+        $crate::__def_ref_parse! {
+            @parse
+            (
+                type = $Type, class = $Class,
+                raw = $Raw, api = $Api,
+                init = __drt_Closure($Init),
+                init_with_loader = __drt_Closure($InitWithLoader),
+                aliases = [ $($Aliases)* ],
+                methods = { $($NewMethods)* },
+                static_methods = { $($StaticMethods)* },
+                fields = { $($Fields)* },
+                static_fields = { $($StaticFields)* },
+            )
+        }
+    };
+
+    // --- static_methods = { ... } ---
+    (@parse
+        (
+            type = $Type:ident, class = $Class:expr,
+            raw = $Raw:ident, api = $Api:ident,
+            init = __drt_Closure($Init:tt),
+            init_with_loader = __drt_Closure($InitWithLoader:tt),
+            aliases = [ $($Aliases:tt)* ],
+            methods = { $($Methods:tt)* },
+            static_methods = { $($OldStaticMethods:tt)* },
+            fields = { $($Fields:tt)* },
+            static_fields = { $($StaticFields:tt)* },
+        )
+        static_methods = { $($NewStaticMethods:tt)* },
+        $($rest:tt)*
+    ) => {
+        $crate::__def_ref_parse! {
+            @parse
+            (
+                type = $Type, class = $Class,
+                raw = $Raw, api = $Api,
+                init = __drt_Closure($Init),
+                init_with_loader = __drt_Closure($InitWithLoader),
+                aliases = [ $($Aliases)* ],
+                methods = { $($Methods)* },
+                static_methods = { $($NewStaticMethods)* },
+                fields = { $($Fields)* },
+                static_fields = { $($StaticFields)* },
+            )
+            , $($rest)*
+        }
+    };
+
+    (@parse
+        (
+            type = $Type:ident, class = $Class:expr,
+            raw = $Raw:ident, api = $Api:ident,
+            init = __drt_Closure($Init:tt),
+            init_with_loader = __drt_Closure($InitWithLoader:tt),
+            aliases = [ $($Aliases:tt)* ],
+            methods = { $($Methods:tt)* },
+            static_methods = { $($OldStaticMethods:tt)* },
+            fields = { $($Fields:tt)* },
+            static_fields = { $($StaticFields:tt)* },
+        )
+        static_methods = { $($NewStaticMethods:tt)* }
+    ) => {
+        $crate::__def_ref_parse! {
+            @parse
+            (
+                type = $Type, class = $Class,
+                raw = $Raw, api = $Api,
+                init = __drt_Closure($Init),
+                init_with_loader = __drt_Closure($InitWithLoader),
+                aliases = [ $($Aliases)* ],
+                methods = { $($Methods)* },
+                static_methods = { $($NewStaticMethods)* },
+                fields = { $($Fields)* },
+                static_fields = { $($StaticFields)* },
+            )
+        }
+    };
+
+    // --- fields { ... } ---
+    (@parse
+        (
+            type = $Type:ident, class = $Class:expr,
+            raw = $Raw:ident, api = $Api:ident,
+            init = __drt_Closure($Init:tt),
+            init_with_loader = __drt_Closure($InitWithLoader:tt),
+            aliases = [ $($Aliases:tt)* ],
+            methods = { $($Methods:tt)* },
+            static_methods = { $($StaticMethods:tt)* },
+            fields = { $($OldFields:tt)* },
+            static_fields = { $($StaticFields:tt)* },
+        )
+        fields { $($NewFields:tt)* },
+        $($rest:tt)*
+    ) => {
+        $crate::__def_ref_parse! {
+            @parse
+            (
+                type = $Type, class = $Class,
+                raw = $Raw, api = $Api,
+                init = __drt_Closure($Init),
+                init_with_loader = __drt_Closure($InitWithLoader),
+                aliases = [ $($Aliases)* ],
+                methods = { $($Methods)* },
+                static_methods = { $($StaticMethods)* },
+                fields = { $($NewFields)* },
+                static_fields = { $($StaticFields)* },
+            )
+            , $($rest)*
+        }
+    };
+
+    (@parse
+        (
+            type = $Type:ident, class = $Class:expr,
+            raw = $Raw:ident, api = $Api:ident,
+            init = __drt_Closure($Init:tt),
+            init_with_loader = __drt_Closure($InitWithLoader:tt),
+            aliases = [ $($Aliases:tt)* ],
+            methods = { $($Methods:tt)* },
+            static_methods = { $($StaticMethods:tt)* },
+            fields = { $($OldFields:tt)* },
+            static_fields = { $($StaticFields:tt)* },
+        )
+        fields { $($NewFields:tt)* }
+    ) => {
+        $crate::__def_ref_parse! {
+            @parse
+            (
+                type = $Type, class = $Class,
+                raw = $Raw, api = $Api,
+                init = __drt_Closure($Init),
+                init_with_loader = __drt_Closure($InitWithLoader),
+                aliases = [ $($Aliases)* ],
+                methods = { $($Methods)* },
+                static_methods = { $($StaticMethods)* },
+                fields = { $($NewFields)* },
+                static_fields = { $($StaticFields)* },
+            )
+        }
+    };
+
+    // --- static_fields { ... } ---
+    (@parse
+        (
+            type = $Type:ident, class = $Class:expr,
+            raw = $Raw:ident, api = $Api:ident,
+            init = __drt_Closure($Init:tt),
+            init_with_loader = __drt_Closure($InitWithLoader:tt),
+            aliases = [ $($Aliases:tt)* ],
+            methods = { $($Methods:tt)* },
+            static_methods = { $($StaticMethods:tt)* },
+            fields = { $($Fields:tt)* },
+            static_fields = { $($OldStaticFields:tt)* },
+        )
+        static_fields { $($NewStaticFields:tt)* },
+        $($rest:tt)*
+    ) => {
+        $crate::__def_ref_parse! {
+            @parse
+            (
+                type = $Type, class = $Class,
+                raw = $Raw, api = $Api,
+                init = __drt_Closure($Init),
+                init_with_loader = __drt_Closure($InitWithLoader),
+                aliases = [ $($Aliases)* ],
+                methods = { $($Methods)* },
+                static_methods = { $($StaticMethods)* },
+                fields = { $($Fields)* },
+                static_fields = { $($NewStaticFields)* },
+            )
+            , $($rest)*
+        }
+    };
+
+    (@parse
+        (
+            type = $Type:ident, class = $Class:expr,
+            raw = $Raw:ident, api = $Api:ident,
+            init = __drt_Closure($Init:tt),
+            init_with_loader = __drt_Closure($InitWithLoader:tt),
+            aliases = [ $($Aliases:tt)* ],
+            methods = { $($Methods:tt)* },
+            static_methods = { $($StaticMethods:tt)* },
+            fields = { $($Fields:tt)* },
+            static_fields = { $($OldStaticFields:tt)* },
+        )
+        static_fields { $($NewStaticFields:tt)* }
+    ) => {
+        $crate::__def_ref_parse! {
+            @parse
+            (
+                type = $Type, class = $Class,
+                raw = $Raw, api = $Api,
+                init = __drt_Closure($Init),
+                init_with_loader = __drt_Closure($InitWithLoader),
+                aliases = [ $($Aliases)* ],
+                methods = { $($Methods)* },
+                static_methods = { $($StaticMethods)* },
+                fields = { $($Fields)* },
+                static_fields = { $($NewStaticFields)* },
+            )
+        }
+    };
+
     // --- eat stray comma and continue ---
     (@parse ( $($acc:tt)* ) , $($rest:tt)* ) => {
         $crate::__def_ref_parse! { @parse ( $($acc)* ) $($rest)* }
@@ -1093,39 +1345,37 @@ fn main() {
             Ok(Test6API)
         },
         as = [Test2, Test3],
-        members = {
-            methods = {
-                get_message = {
-                    name = "getMessage",
-                    sig = "()Ljava/lang/String;",
-                    ret = JString,
-                },
-                set_message = {
-                    name = "setMessage",
-                    sig = "(Ljava/lang/String;)V",
-                    ret = void
-                }
+        methods = {
+            get_message = {
+                name = "getMessage",
+                sig = "()Ljava/lang/String;",
+                ret = JString,
             },
-            static_methods = {
-                example_static = {
-                    name = "exampleStatic",
-                    sig = "(I)I",
-                    ret = jint,
-                }
-            },
-            fields {
-                example_field = {
-                    name = "exampleField",
-                    sig = "I",
-                    ty = jint
-                }
-            },
-            static_fields {
-                example_static_field = {
-                    name = "exampleStaticField",
-                    sig = "I",
-                    ty = jint,
-                }
+            set_message = {
+                name = "setMessage",
+                sig = "(Ljava/lang/String;)V",
+                ret = void
+            }
+        },
+        static_methods = {
+            example_static = {
+                name = "exampleStatic",
+                sig = "(I)I",
+                ret = jint,
+            }
+        },
+        fields {
+            example_field = {
+                name = "exampleField",
+                sig = "I",
+                ty = jint
+            }
+        },
+        static_fields {
+            example_static_field = {
+                name = "exampleStaticField",
+                sig = "I",
+                ty = jint,
             }
         }
     );
@@ -1140,34 +1390,32 @@ fn main() {
             Ok(Test7API)
         },
         as = [Test2, Test3],
-        members = {
-            fields {
-                example_field = {
-                    name = "exampleField",
-                    sig = "I",
-                    ty = jint,
-                }
+        fields {
+            example_field = {
+                name = "exampleField",
+                sig = "I",
+                ty = jint,
+            }
+        },
+        methods = {
+            get_message = {
+                name = "getMessage",
+                sig = "()Ljava/lang/String;",
+                ret = JString
             },
-            methods = {
-                get_message = {
-                    name = "getMessage",
-                    sig = "()Ljava/lang/String;",
-                    ret = JString
-                },
-                set_message = {
-                    name = "setMessage",
-                    sig = "(Ljava/lang/String;)V",
-                    ret = void,
-                }
-            },
-            static_methods = {
-                example_static = {
-                    name = "exampleStatic",
-                    sig = "(I)I",
-                    ret = jint,
-                }
-            },
-        }
+            set_message = {
+                name = "setMessage",
+                sig = "(Ljava/lang/String;)V",
+                ret = void,
+            }
+        },
+        static_methods = {
+            example_static = {
+                name = "exampleStatic",
+                sig = "(I)I",
+                ret = jint,
+            }
+        },
     );
 
     #[allow(dead_code)]
@@ -1203,6 +1451,7 @@ fn main() {
         }
     );
 
+    Test6API::get();
     Test7API::get();
     Test8API::get();
 
