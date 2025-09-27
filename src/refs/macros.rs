@@ -6,6 +6,90 @@
 use crate::{objects::JObject, refs::Reference};
 
 /// Call the initializer through a shim to help with type inference.
+/// Helper macro to emit From implementation and cast method for aliases
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __drt__emit_aliases {
+    ($Type:ident, [ $($aliases:tt)* ]) => {
+        $crate::__drt__process_aliases! { $Type, $($aliases)* }
+    };
+}
+
+/// Helper macro to process individual aliases
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __drt__process_aliases {
+    // Handle syntax: method_name = Type
+    ($Type:ident, $method_name:ident = $AliasType:ident $(, $($rest:tt)*)?  ) => {
+        // Generate From implementation
+        impl<'l> From<$Type<'l>> for $AliasType<'l> {
+            fn from(value: $Type<'l>) -> $AliasType<'l> {
+                let raw = value.into_raw();
+                unsafe { <$AliasType as $crate::refs::Reference>::kind_from_raw(raw) }
+            }
+        }
+
+        $(
+            $crate::__drt__process_aliases! { $Type, $($rest)* }
+        )?
+    };
+
+    // Base case - no more aliases
+    ($Type:ident,) => {};
+    ($Type:ident) => {};
+}
+
+/// Helper macro to emit cast methods for aliases
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __drt__emit_alias_methods {
+    ($Type:ident, [ $($aliases:tt)* ]) => {
+        $crate::__drt__process_alias_methods! { $Type, $($aliases)* }
+    };
+}
+
+/// Helper macro to process individual alias methods
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __drt__process_alias_methods {
+    // Handle syntax: method_name = Type - generate cast method
+    ($Type:ident, $method_name:ident = $AliasType:ident $(, $($rest:tt)*)?  ) => {
+        #[doc = concat!(r#"Casts this `"#, stringify!($Type), r#"` to a `"#, stringify!($AliasType), r#"`
+
+This does not require a runtime type check since any `"#, stringify!($Type), r#"` is also a `"#, stringify!($AliasType), r#"`"#)]
+        pub fn $method_name(&self) -> $crate::refs::Cast<'local, '_, $AliasType<'local>> {
+            // SAFETY: we know that any instance of this type is also an instance of the alias type
+            unsafe { $crate::refs::Cast::<$AliasType>::new_unchecked(self) }
+        }
+
+        $(
+            $crate::__drt__process_alias_methods! { $Type, $($rest)* }
+        )?
+    };
+
+    // Base case - no more aliases
+    ($Type:ident,) => {};
+    ($Type:ident) => {};
+}
+
+/// Helper macro to emit alias cast method
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __drt__emit_alias_method {
+    ($Type:ident, $method_name:ident = $AliasType:ident) => {
+        #[doc = concat!(r#"Casts this `"#, stringify!($Type), r#"` to a `"#, stringify!($AliasType), r#"`
+
+This does not require a runtime type check since any `"#, stringify!($Type), r#"` is also a `"#, stringify!($AliasType), r#"`"#)]
+        pub fn $method_name(&self) -> $crate::refs::Cast<'local, '_, $AliasType<'local>> {
+            // SAFETY: we know that any instance of this type is also an instance of the alias type
+            unsafe { $crate::refs::Cast::<$AliasType>::new_unchecked(self) }
+        }
+    };
+    ($Type:ident, $AliasType:ident) => {
+        // No method generated for old-style aliases without method names
+    };
+}
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __drt__expand_init {
@@ -168,17 +252,13 @@ Returns [Error::WrongObjectType] if the `IsInstanceOf` check fails.
                 ) -> $crate::errors::Result<$Type<'any_local>> {
                     env.cast_local::<$Type>(obj)
                 }
+
+                // ---------- Alias cast methods ----------
+                $crate::__drt__emit_alias_methods!($Type, [ $($Aliases)* ]);
             }
 
-            // ---------- Safe upcasts ----------
-            $(
-                impl<'l> From<$Type<'l>> for $Aliases<'l> {
-                    fn from(value: $Type<'l>) -> $Aliases<'l> {
-                        let raw = value.into_raw();
-                        unsafe { <$Aliases as $crate::refs::Reference>::kind_from_raw(raw) }
-                    }
-                }
-            )*
+                        // ---------- Safe upcasts ----------
+            $crate::__drt__emit_aliases!($Type, [ $($Aliases)* ]);
 
             // ---------- Reference impl ----------
             unsafe impl $crate::refs::Reference for $Type<'_> {

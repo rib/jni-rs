@@ -1,7 +1,7 @@
 use crate::{
     env::Env,
     errors::Result,
-    objects::{Cast, Global, JClass, JCollection, JIterator, JObject},
+    objects::{Global, JClass, JCollection, JIterator, JObject},
 };
 
 #[cfg(doc)]
@@ -17,18 +17,10 @@ crate::define_reference_type!(
     init = |env, class| {
         Ok(Self { class: env.new_global_ref(&class)? })
     },
-    as = [ JCollection ]
+    as = [ as_collection = JCollection ]
 );
 
 impl<'local> JSet<'local> {
-    /// Casts this `JSet` to a `JCollection`
-    ///
-    /// This does not require a runtime type check since any `java.lang.Set` is also a `java.util.Collection`
-    pub fn as_collection(&self) -> Cast<'local, '_, JCollection<'local>> {
-        // SAFETY: we know that any `java.lang.Set` is also a `java.util.Collection`
-        unsafe { Cast::<JCollection>::new_unchecked(self) }
-    }
-
     /// Adds the given element to this set if it is not already present
     ///
     /// Returns `true` if the element was added, `false` if it was already present.

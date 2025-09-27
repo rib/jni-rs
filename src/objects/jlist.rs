@@ -1,7 +1,7 @@
 use crate::{
     errors::*,
     objects::{
-        Cast, Global, JClass, JCollection, JIterator, JMethodID, JObject, JValue, LoaderContext,
+        Global, JClass, JCollection, JIterator, JMethodID, JObject, JValue, LoaderContext,
         Reference,
     },
     signature::{Primitive, ReturnType},
@@ -27,7 +27,7 @@ crate::define_reference_type!(
             remove_method: env.get_method_id(class, c"remove", c"(I)Ljava/lang/Object;")?,
         })
     },
-    as = [ JCollection ]
+    as = [ as_collection = JCollection ]
 );
 
 impl<'local> JList<'local> {
@@ -43,14 +43,6 @@ impl<'local> JList<'local> {
         env: &mut Env<'_>,
     ) -> Result<JList<'any_local>> {
         env.cast_local::<JList>(obj)
-    }
-
-    /// Casts this `JList` to a `JCollection`
-    ///
-    /// This does not require a runtime type check since any `java.lang.List` is also a `java.util.Collection`
-    pub fn as_collection(&self) -> Cast<'local, '_, JCollection<'local>> {
-        // SAFETY: we know that any `java.lang.List` is also a `java.util.Collection`
-        unsafe { Cast::<JCollection>::new_unchecked(self) }
     }
 
     /// Look up the value for a key. Returns `Some` if it's found and `None` if
