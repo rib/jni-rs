@@ -154,18 +154,8 @@ macro_rules! jdesc {
 // ---------- Rust-side descriptor (runtime, uses Reference::class_name) ----------
 macro_rules! rust_jdesc {
     // single reference: &JString
-    ( & $rust:path ) => {
-        format!("L{};", < $rust as Reference >::class_name())
-    };
-
-    // array of Rust refs: &[&JString], [[&JString]], etc.
-    ( & [ $($inner:tt)+ ] ) => {
-        format!("[{}]", rust_jdesc!( $($inner)+ ))
-    };
-
-    // enforce that arrays only contain Rust refs (reject e.g. &[java.lang.String])
-    ( [ $($any:tt)+ ] ) => {
-        compile_error!("Rust arrays must be references to Rust Reference types, e.g., &[&JString]")
+    ( $rust:ty ) => {
+        format!("L{};", <$rust as $crate::refs::Reference>::class_name())
     };
 }
 
@@ -239,60 +229,60 @@ macro_rules! rust_array_wrapper_ty {
 macro_rules! jnorm_args_munch {
     ( ( ) ( $($acc:tt)* ) ) => { ( $($acc)* ) };
 
-    // & [ ... ]
-    ( ( $n:ident : & [ $($inner:tt)+ ] , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
-        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: rust(rust_array_wrapper_ty(&[ $($inner)+ ])) as rust_array_wrapper_ty(&[ $($inner)+ ]), ) )
-    };
-    ( ( $n:ident : & [ $($inner:tt)+ ] ) ( $($acc:tt)* ) ) => {
-        ( $($acc)* $n: rust(rust_array_wrapper_ty(&[ $($inner)+ ])) as rust_array_wrapper_ty(&[ $($inner)+ ]) )
-    };
-
-    // & Path
-    ( ( $n:ident : & $rust:path , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
-        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: rust($rust) as & $rust , ) )
-    };
-    ( ( $n:ident : & $rust:path ) ( $($acc:tt)* ) ) => {
-        ( $($acc)* $n: rust($rust) as & $rust )
-    };
-
     // package name with 'as'
-    ( ( $n:ident : $first:ident . $($restname:tt)+ as $as_ty:path , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
-        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: obj( $first . $($restname)+ ) as $as_ty , ) )
+    ( ( $n:ident : $first:ident . $($restname:tt)+ as $as_ty:ty , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
+        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: obj( $first . $($restname)+ ) as rust( $as_ty ) , ) )
     };
-    ( ( $n:ident : $first:ident . $($restname:tt)+ as $as_ty:path ) ( $($acc:tt)* ) ) => {
-        ( $($acc)* $n: obj( $first . $($restname)+ ) as $as_ty )
+    ( ( $n:ident : $first:ident . $($restname:tt)+ as $as_ty:ty ) ( $($acc:tt)* ) ) => {
+        ( $($acc)* $n: obj( $first . $($restname)+ ) as rust( $as_ty ) )
     };
 
     // package name, default as JObject
     ( ( $n:ident : $first:ident . $($restname:tt)+ , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
-        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: obj( $first . $($restname)+ ) as JObject , ) )
+        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: obj( $first . $($restname)+ ) as rust( JObject ) , ) )
     };
     ( ( $n:ident : $first:ident . $($restname:tt)+ ) ( $($acc:tt)* ) ) => {
-        ( $($acc)* $n: obj( $first . $($restname)+ ) as JObject )
+        ( $($acc)* $n: obj( $first . $($restname)+ ) as rust( JObject ) )
     };
 
     // default package with 'as'
-    ( ( $n:ident : . $outer:ident $( :: $inner:ident )* as $as_ty:path , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
-        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: obj( . $outer $( :: $inner )* ) as $as_ty , ) )
+    ( ( $n:ident : . $outer:ident $( :: $inner:ident )* as $as_ty:ty , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
+        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: obj( . $outer $( :: $inner )* ) as rust( $as_ty ) , ) )
     };
-    ( ( $n:ident : . $outer:ident $( :: $inner:ident )* as $as_ty:path ) ( $($acc:tt)* ) ) => {
-        ( $($acc)* $n: obj( . $outer $( :: $inner )* ) as $as_ty )
+    ( ( $n:ident : . $outer:ident $( :: $inner:ident )* as $as_ty:ty ) ( $($acc:tt)* ) ) => {
+        ( $($acc)* $n: obj( . $outer $( :: $inner )* ) as rust( $as_ty ) )
     };
 
     // default package, default as JObject
     ( ( $n:ident : . $outer:ident $( :: $inner:ident )* , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
-        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: obj( . $outer $( :: $inner )* ) as JObject , ) )
+        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: obj( . $outer $( :: $inner )* ) as rust( JObject ) , ) )
     };
     ( ( $n:ident : . $outer:ident $( :: $inner:ident )* ) ( $($acc:tt)* ) ) => {
-        ( $($acc)* $n: obj( . $outer $( :: $inner )* ) as JObject )
+        ( $($acc)* $n: obj( . $outer $( :: $inner )* ) as rust( JObject ) )
+    };
+
+    // & [ ... ]
+    ( ( $n:ident : & [ $($inner:tt)+ ] , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
+        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: rust(rust_array_wrapper_ty(&[ $($inner)+ ])), ) )
+    };
+    ( ( $n:ident : & [ $($inner:tt)+ ] ) ( $($acc:tt)* ) ) => {
+        ( $($acc)* $n: rust(rust_array_wrapper_ty(&[ $($inner)+ ])) )
+    };
+
+    // & Path
+    ( ( $n:ident : & $rust:path , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
+        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: rust($rust) , ) )
+    };
+    ( ( $n:ident : & $rust:path ) ( $($acc:tt)* ) ) => {
+        ( $($acc)* $n: rust($rust) )
     };
 
     // primitives (last to avoid eating 'java' as a primitive)
     ( ( $n:ident : $p:ident , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
-        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: prim( jprim_canon!($p) ) as jprim_canon!($p) , ) )
+        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: prim( jprim_canon!($p) ) , ) )
     };
     ( ( $n:ident : $p:ident ) ( $($acc:tt)* ) ) => {
-        ( $($acc)* $n: prim( jprim_canon!($p) ) as jprim_canon!($p) )
+        ( $($acc)* $n: prim( jprim_canon!($p) ) )
     };
 }
 
@@ -304,224 +294,293 @@ macro_rules! jnorm_args {
 
 // Return normalization → keep same “as …” rule so downstream is uniform
 macro_rules! jnorm_ret {
-    ( $p:ident ) => { prim( jprim_canon!($p) ) as jprim_canon!($p) };
-    ( $first:ident . $($rest:tt)+ as $as_ty:path ) => { obj( $first . $($rest)+ ) as $as_ty };
-    ( $first:ident . $($rest:tt)+ ) => { obj( $first . $($rest)+ ) as JObject };
-    ( . $outer:ident $( :: $inner:ident )* as $as_ty:path ) => { obj( . $outer $( :: $inner )* ) as $as_ty };
-    ( . $outer:ident $( :: $inner:ident )* ) => { obj( . $outer $( :: $inner )* ) as JObject };
-    ( & $rust:path ) => { rust(& $rust) as & $rust };
-    ( & [ $($inner:tt)+ ] ) => { rust(&[ $($inner)+ ]) as &[ $($inner)+ ] };
+    ( $first:ident . $($rest:tt)+ as $as_ty:ty ) => { obj( $first . $($rest)+ ) as rust( $as_ty ) };
+    ( $first:ident . $($rest:tt)+ ) => { obj( $first . $($rest)+ ) as rust( JObject ) };
+    ( . $outer:ident $( :: $inner:ident )* as $as_ty:ty ) => { obj( . $outer $( :: $inner )* ) as rust( $as_ty ) };
+    ( . $outer:ident $( :: $inner:ident )* ) => { obj( . $outer $( :: $inner )* ) as rust( JObject ) };
+    ( & $rust:ty ) => { rust($rust) };
+    ( & [ $($inner:tt)+ ] ) => { rust(rust_array_wrapper_ty(&[ $($inner)+ ])) };
+    ( $p:ident ) => { prim( jprim_canon!($p) ) };
 }
 
 // ---------- helpers: presence of rust(...), building pieces ----------
 macro_rules! _is_rust {
-    ( prim ( $($t:tt)* ) as $($as:tt)+ ) => {
+    ( prim ( $p:ident ) ) => {
         0
     };
-    ( obj  ( $($t:tt)* ) as $($as:tt)+ ) => {
+    ( obj  ( $($t:tt)* ) as rust ( $($as:tt)+ ) ) => {
         0
     };
-    ( rust ( $($t:tt)* ) as $($as:tt)+ ) => {
+    ( rust ( $($t:tt)* ) ) => {
         1
     };
 }
+
 macro_rules! any_rust {
-    ( ( $( $n:ident : $k:ident ( $($t:tt)* ) as $as_ty:path ),* ), ( $rk:ident ( $($rt:tt)* ) as $ret_ty:path ) ) => {{
-        0 $( | _is_rust!($k($($t)*) as $as_ty) )* | _is_rust!($rk($($rt)*) as $ret_ty)
+    // No args
+    ( ( ), ( $rk:ident ( $($rt:tt)* ) $( as rust ( $($ret_as:tt)+ ) )? ) ) => {
+        _is_rust!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? )
+    };
+    // Args present
+    ( ( $( $an:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* $(,)? ),
+      ( $rk:ident ( $($rt:tt)* ) $( as rust ( $($ret_as:tt)+ ) )? )
+    ) => {{
+        0
+        $( | _is_rust!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ) )*
+        | _is_rust!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? )
     }};
 }
 
-macro_rules! _arg_desc_lit     { ( prim ( $p:ident ) as $as:path ) => { jdesc!($p) };
-                                 ( obj  ( $($j:tt)+ ) as $as:path ) => { jdesc!($($j)+) }; }
-macro_rules! _arg_desc_fmt_piece{ ( prim ( $p:ident ) as $as:path ) => { jdesc!($p) };
-                                 ( obj  ( $($j:tt)+ ) as $as:path ) => { jdesc!($($j)+) };
-                                 ( rust ( & $($r:tt)+ ) as $as:path ) => { "{}" }; }
-macro_rules! _arg_desc_fmt_vals { ( prim ( $p:ident ) as $as:path ) => {};
-                                 ( obj  ( $($j:tt)+ ) as $as:path ) => {};
-                                 ( rust ( & $($r:tt)+ ) as $as:path ) => { , rust_jdesc!(& $($r)+) }; }
+macro_rules! _arg_desc_lit     { ( prim ( $p:ident ) ) => { jdesc!($p) };
+                                 ( obj  ( $($j:tt)+ ) as rust ( $as:ty ) ) => { jdesc!($($j)+) }; }
+macro_rules! _arg_desc_fmt_piece{ ( prim ( $p:ident ) ) => { jdesc!($p) };
+                                 ( obj  ( $($j:tt)+ ) as rust ( $as:ty ) ) => { jdesc!($($j)+) };
+                                 ( rust ( $($r:tt)+ ) ) => { "{}" }; }
+macro_rules! _arg_desc_fmt_vals { ( prim ( $p:ident ) ) => {};
+                                 ( obj  ( $($j:tt)+ ) as rust ( $as:ty ) ) => {};
+                                 ( rust ( $($r:tt)+ ) ) => { , rust_jdesc!($($r)+) }; }
 
-macro_rules! ret_desc_lit       { ( prim ( $p:ident ) as $as:path ) => { jdesc!($p) };
-                                 ( obj  ( $($j:tt)+ ) as $as:path ) => { jdesc!($($j)+) }; }
-macro_rules! ret_desc_fmt_piece { ( prim ( $p:ident ) as $as:path ) => { jdesc!($p) };
-                                 ( obj  ( $($j:tt)+ ) as $as:path ) => { jdesc!($($j)+) };
-                                 ( rust ( & $($r:tt)+ ) as $as:path ) => { "{}" }; }
-macro_rules! ret_desc_fmt_val   { ( prim ( $p:ident ) as $as:path ) => {};
-                                 ( obj  ( $($j:tt)+ ) as $as:path ) => {};
-                                 ( rust ( & $($r:tt)+ ) as $as:path ) => { , rust_jdesc!(& $($r)+) }; }
+macro_rules! ret_desc_lit       {
+    ( prim ( $p:ident ) ) => { jdesc!($p) };
+    ( obj  ( $($j:tt)+ ) as rust ( $as:ty ) ) => { jdesc!($($j)+) };
+    ( rust ( $($r:tt)+ ) ) => { "{}" };
+}
+macro_rules! ret_desc_fmt_piece {
+    ( prim ( $p:ident ) ) => { jdesc!($p) };
+    ( obj  ( $($j:tt)+ ) as rust ( $as:ty ) ) => { jdesc!($($j)+) };
+    ( rust ( $($r:tt)+ ) ) => { "{}" };
+}
+macro_rules! ret_desc_fmt_val   {
+    ( prim ( $p:ident ) ) => {};
+    ( obj  ( $($j:tt)+ ) as rust ( $as:ty ) ) => {};
+    ( rust ( $($r:tt)+ ) ) => { , rust_jdesc!($($r)+) };
+}
 
 // Parameter & return Rust types from normalized forms
 macro_rules! _param_ty_from_norm {
-    ( prim ( $(_p:tt)+ ) as $as_ty:path ) => {
-        $as_ty
+    ( prim ( void ) ) => {
+        compile_error!("'void' is not a valid parameter type");
     };
-    ( obj  ( $(_j:tt)+ ) as $as_ty:path ) => {
+    ( prim ( $p:ident ) ) => {
+        $crate::sys::$p
+    };
+    ( obj ( $(_j:tt)+ ) as rust ( $as_ty:ty ) ) => {
         &$as_ty
     };
-    ( rust ( $as_r:path )   as $as_use:path ) => {
-        $as_use
+    ( rust ( $as_ty:ty ) ) => {
+        $as_ty
     };
 }
 macro_rules! _ret_ty_from_norm {
-    ( prim ( void ) as $as_ty:path ) => {
+    ( prim ( void ) ) => {
         ()
     };
-    ( prim ( $(_p:tt)+ ) as $as_ty:path ) => {
+    ( prim ( $p:ident ) ) => {
+        $crate::sys::$p
+    };
+    ( obj ( $(_j:tt)+ ) as rust ( $as_ty:ty ) ) => {
         $as_ty
     };
-    ( obj  ( $(_j:tt)+ ) as $as_ty:path ) => {
+    ( rust ( $as_ty:ty ) ) => {
         $as_ty
-    };
-    ( rust ( $as_r:path )   as $as_use:path ) => {
-        $as_use
     };
 }
 
 // Build signature (literal vs format)
+
 macro_rules! build_sig_literal {
-    ( ( $( $n:ident : $k:ident ( $($t:tt)* ) as $as_ty:path ),* ) -> ( $rk:ident ( $($rt:tt)* ) as $ret_ty:path ) ) => {
-        concat!("(", $( _arg_desc_lit!($k($($t)*) as $as_ty) ),* , ")", ret_desc_lit!($rk($($rt)*) as $ret_ty))
+    ( ( $( $n:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* )
+      -> ( $rk:ident ( $($rt:tt)* ) $( as rust ( $($ret_as:tt)+ ) )? )
+    ) => {
+        concat!(
+            "(",
+            $( _arg_desc_lit!( $ak($($at)*) $( as rust ( $($aas)+ ) )? ) ),*,
+            ")",
+            ret_desc_lit!( $rk($($rt)*) $( as rust ( $($ret_as)+ ) )? )
+        )
     };
 }
 macro_rules! build_sig_format {
-    ( ( $( $n:ident : $k:ident ( $($t:tt)* ) as $as_ty:path ),* ) -> ( $rk:ident ( $($rt:tt)* ) as $ret_ty:path ) ) => {
+    ( ( $( $n:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* )
+      -> ( $rk:ident ( $($rt:tt)* ) $( as rust ( $($ret_as:tt)+ ) )? )
+    ) => {
         format!(
-            concat!("(", $( _arg_desc_fmt_piece!($k($($t)*) as $as_ty) ),* , ")", ret_desc_fmt_piece!($rk($($rt)*) as $ret_ty))
-            $( _arg_desc_fmt_vals!($k($($t)*) as $as_ty) )*
-            ret_desc_fmt_val!($rk($($rt)*) as $ret_ty)
+            concat!(
+                "(",
+                $( _arg_desc_fmt_piece!( $ak($($at)*) $( as rust ( $($aas)+ ) )? ) ),*,
+                ")",
+                ret_desc_fmt_piece!( $rk($($rt)*) $( as rust ( $($ret_as)+ ) )? )
+            )
+            $( _arg_desc_fmt_vals!( $ak($($at)*) $( as rust ( $($aas)+ ) )? ) )*
+            ret_desc_fmt_val!( $rk($($rt)*) $( as rust ( $($ret_as)+ ) )? )
         )
     };
 }
 
 // ----- Convert an argument expression to a `jvalue` (by normalized kind) -----
 
-// How to get a `jobject` handle from a reference-y Rust wrapper.
-// Edit this if your wrappers use a different API.
+// Strip leading & from a type so we can call Reference::as_raw on the referent
+macro_rules! strip_ref_ty {
+    ( & $inner:ty ) => {
+        $inner
+    };
+    ( $t:ty ) => {
+        $t
+    };
+}
+
+// Get a `jobject` handle from a reference-y Rust wrapper (type can include &)
 macro_rules! as_jobject_handle {
-    // Common jni crate pattern: get raw handle from any Reference type
-    ( $as_ty:path, $expr:expr ) => {{
-        <$as_ty as Reference>::as_raw($expr)
+    ( $ty:ty, $expr:expr ) => {{
+        <strip_ref_ty!($ty) as $crate::refs::Reference>::as_raw($expr)
     }};
 }
 
 // A single normalized arg → jni::sys::jvalue
 macro_rules! _jvalue_of_norm_arg {
-    ( $name:ident : prim ( jboolean ) as $as_ty:path ) => {
+    ( $name:ident : prim ( jboolean ) ) => {
         jni::sys::jvalue {
             z: ($name as jni::sys::jboolean),
         }
     };
-    ( $name:ident : prim ( jbyte    ) as $as_ty:path ) => {
+    ( $name:ident : prim ( jbyte    ) ) => {
         jni::sys::jvalue {
             b: ($name as jni::sys::jbyte),
         }
     };
-    ( $name:ident : prim ( jchar    ) as $as_ty:path ) => {
+    ( $name:ident : prim ( jchar    ) ) => {
         jni::sys::jvalue {
             c: ($name as jni::sys::jchar),
         }
     };
-    ( $name:ident : prim ( jshort   ) as $as_ty:path ) => {
+    ( $name:ident : prim ( jshort   ) ) => {
         jni::sys::jvalue {
             s: ($name as jni::sys::jshort),
         }
     };
-    ( $name:ident : prim ( jint     ) as $as_ty:path ) => {
+    ( $name:ident : prim ( jint     ) ) => {
         jni::sys::jvalue {
             i: ($name as jni::sys::jint),
         }
     };
-    ( $name:ident : prim ( jlong    ) as $as_ty:path ) => {
+    ( $name:ident : prim ( jlong    ) ) => {
         jni::sys::jvalue {
             j: ($name as jni::sys::jlong),
         }
     };
-    ( $name:ident : prim ( jfloat   ) as $as_ty:path ) => {
+    ( $name:ident : prim ( jfloat   ) ) => {
         jni::sys::jvalue {
             f: ($name as jni::sys::jfloat),
         }
     };
-    ( $name:ident : prim ( jdouble  ) as $as_ty:path ) => {
+    ( $name:ident : prim ( jdouble  ) ) => {
         jni::sys::jvalue {
             d: ($name as jni::sys::jdouble),
         }
     };
 
-    // Objects (Java or Rust) — both end up as 'l'
-    ( $name:ident : obj  ( $($j:tt)+ ) as $as_ty:path ) => {
+    // Java objects (normalized as "obj(...) as rust(Ty)") → object slot
+    ( $name:ident : obj  ( $($j:tt)+ ) as rust ( $as_ty:ty ) ) => {
         jni::sys::jvalue {
             l: as_jobject_handle!($as_ty, $name),
         }
     };
-    ( $name:ident : rust ( $as_r:path ) as $as_use:path ) => {
+
+    // Rust refs (normalized as "rust(Ty)") → object slot
+    ( $name:ident : rust ( $as_ty:ty ) ) => {
         jni::sys::jvalue {
-            l: as_jobject_handle!($as_use, $name),
+            l: as_jobject_handle!($as_ty, $name),
         }
     };
 }
 
 // Build `[jvalue; N]` from a normalized arg list
 macro_rules! build_jni_args_array {
-    ( ( $( $an:ident : $ak:ident ( $($at:tt)* ) as $aas:path ),* $(,)? ) ) => {{
-        [ $( _jvalue_of_norm_arg!($an : $ak($($at)*) as $aas) ),* ]
+    ( ( $( $an:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* $(,)? ) ) => {{
+        [ $( _jvalue_of_norm_arg!( $an : $ak($($at)*) $( as rust ( $($aas)+ ) )? ) ),* ]
     }};
+}
+
+// Expand a normalized args list into a typed parameter list
+macro_rules! param_list_from_norm {
+    ( ( $( $an:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* $(,)? ) ) => {
+        $( $an: _param_ty_from_norm!( $ak($($at)*) $( as rust ( $($aas)+ ) )? ) ),*
+    };
 }
 
 // ----- Select the correct CallXxxMethodA for the return type -----
 macro_rules! _call_api_for_ret {
-    ( prim ( void     ) as $rty:path ) => {
+    ( prim ( void     ) ) => {
         CallVoidMethodA
     };
-    ( prim ( jboolean ) as $rty:path ) => {
+    ( prim ( jboolean ) ) => {
         CallBooleanMethodA
     };
-    ( prim ( jbyte    ) as $rty:path ) => {
+    ( prim ( jbyte    ) ) => {
         CallByteMethodA
     };
-    ( prim ( jchar    ) as $rty:path ) => {
+    ( prim ( jchar    ) ) => {
         CallCharMethodA
     };
-    ( prim ( jshort   ) as $rty:path ) => {
+    ( prim ( jshort   ) ) => {
         CallShortMethodA
     };
-    ( prim ( jint     ) as $rty:path ) => {
+    ( prim ( jint     ) ) => {
         CallIntMethodA
     };
-    ( prim ( jlong    ) as $rty:path ) => {
+    ( prim ( jlong    ) ) => {
         CallLongMethodA
     };
-    ( prim ( jfloat   ) as $rty:path ) => {
+    ( prim ( jfloat   ) ) => {
         CallFloatMethodA
     };
-    ( prim ( jdouble  ) as $rty:path ) => {
+    ( prim ( jdouble  ) ) => {
         CallDoubleMethodA
     };
 
-    // Anything reference-like (Java object or "rust(&T)") returns an object
-    ( obj  ( $($rt:tt)+ ) as $rty:path ) => {
+    // Any reference-like return → object
+    ( obj  ( $($rt:tt)+ ) $( as rust ( $($as:tt)+ ) )? ) => {
         CallObjectMethodA
     };
-    ( rust ( $r:path )       as $rty:path ) => {
+    ( rust ( $($r:tt)+ ) ) => {
         CallObjectMethodA
     };
+}
+
+// Helper to unwrap one layer of parentheses around a token tree
+macro_rules! unwrap_parens {
+    ( ( $($inner:tt)* ) ) => { $($inner)* };
 }
 
 // ----- LOOKUP FN -----
 macro_rules! jgen_method_lookup_fn {
     (
-        $this:ident,
+        $this:path,
         $jname:ident,
         $rname:ident,
-        $args:tt,
-        $ret:tt
+        ( $($args:tt)* ),
+        ( $($ret:tt)+ )
     ) => {
         paste! {
             fn [<_ $rname _lookup>](env: &mut Env) -> Result<JMethodID> {
                 let class: &JClass = $this::lookup_class()?;
-                let sig = if any_rust!( ( unwrap_parens!($args) ), ( $ret ) ) == 0 {
-                    build_sig_literal!( ( unwrap_parens!($args) ) -> ( $ret ) )
+
+                // Expand normalization at the call site of the helpers.
+                let sig = if any_rust!(
+                    ( jnorm_args!( $($args)* ) ),
+                    ( jnorm_ret!( $($ret)+ ) )
+                ) == 0 {
+                    build_sig_literal!(
+                        ( jnorm_args!( $($args)* ) )
+                        -> ( jnorm_ret!( $($ret)+ ) )
+                    )
                 } else {
-                    build_sig_format!( ( unwrap_parens!($args) ) -> ( $ret ) )
+                    build_sig_format!(
+                        ( jnorm_args!( $($args)* ) )
+                        -> ( jnorm_ret!( $($ret)+ ) )
+                    )
                 };
+
                 env.get_method_id(class, stringify!($jname), &sig)
             }
         }
@@ -531,27 +590,27 @@ macro_rules! jgen_method_lookup_fn {
 // ----- CALL FN (build jvalue[] and pick the API) -----
 macro_rules! jgen_method_call_fn {
     (
-        $this:ident,
+        $this:path,
         $rname:ident,
-        $args:tt,
-        $ret:tt
+        ( $($args:tt)* ),
+        ( $($ret:tt)+ )
     ) => {
         paste! {
             fn [<_ $rname _call>](
-                env: Env,
+                env: &mut Env,
                 this: &$this,
                 method_id: JMethodID,
-                param_list_from_norm!( ( unwrap_parens!($args) ) )
-            ) -> Result<_ret_ty_from_norm!( $ret )> {
+                param_list_from_norm!( ( jnorm_args!( $($args)* ) ) )
+            ) -> Result<_ret_ty_from_norm!( jnorm_ret!( $($ret)+ ) )> {
                 // Build the jvalue array
-                let jni_args = build_jni_args_array!( ( unwrap_parens!($args) ) );
+                let jni_args = build_jni_args_array!( ( jnorm_args!( $($args)* ) ) );
 
                 // Choose the correct CallXxxMethodA variant based on return
                 let _ = &this; // silence unused for some linters
                 // Your codebase likely wraps raw calls with a helper macro; we mirror your earlier example:
                 jni_call_check_ex!(
                     this, v1_1,
-                    _call_api_for_ret!( $ret ),
+                    _call_api_for_ret!( jnorm_ret!( $($ret)+ ) ),
                     obj, // (your helper macro may use this token for dispatch; adjust if needed)
                     method_id,
                     &jni_args
@@ -559,18 +618,6 @@ macro_rules! jgen_method_call_fn {
             }
         }
     };
-}
-
-// Expand a normalized args list into a typed parameter list
-macro_rules! param_list_from_norm {
-    ( ( $( $an:ident : $ak:ident ( $($at:tt)* ) as $aas:path ),* $(,)? ) ) => {
-        $( $an: _param_ty_from_norm!($ak($($at)*) as $aas) ),*
-    };
-}
-
-// Helper to unwrap one layer of parentheses around a token tree
-macro_rules! unwrap_parens {
-    ( ( $($inner:tt)* ) ) => { $($inner)* };
 }
 
 // ---------- Public: jgen_bind_method ----------
@@ -604,21 +651,21 @@ macro_rules! jgen_bind_method {
     (
         this: $this:path,
         $jname:ident as $rname:ident,
-        sig: ( $( $an:ident : $($aty:tt)+ ),* $(,)? ) -> $($rty:tt)+
+        sig: ( $($args:tt)* ) -> $($rty:tt)+
     ) => {
 
         jgen_method_lookup_fn!(
             $this,
             $jname,
             $rname,
-            jnorm_args!( $( $an : $($aty)+ ),* ),
-            jnorm_ret!( $($rty)+ )
+            ( $($args)* ),
+            ( $($rty)+ )
         );
         jgen_method_call_fn!(
             $this,
             $rname,
-            jnorm_args!( $( $an : $($aty)+ ),* ),
-            jnorm_ret!( $($rty)+ )
+            ( $($args)* ),
+            ( $($rty)+ )
         );
     };
 }
@@ -733,6 +780,12 @@ const _: () = {
 type jint = i32;
 
 // -------------------- Example --------------------
+jgen_bind_method!(
+    this: JFoo,
+    javaFunction as rust_function_a,
+    sig: (a: java.lang.String, c: jint) -> void
+);
+
 jgen_bind_method!(
     this: JFoo,
     javaFunction as rust_function,
