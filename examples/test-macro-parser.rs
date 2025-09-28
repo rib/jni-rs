@@ -1400,7 +1400,7 @@ fn main() {
         methods = {
             get_message = {
                 name = "getMessage",
-                sig = "()Ljava/lang/String;",
+                sig = () -> java.lang.String,
                 ret = JString
             },
             set_message = {
