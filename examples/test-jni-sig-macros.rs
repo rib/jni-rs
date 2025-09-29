@@ -262,9 +262,54 @@ macro_rules! jnorm_type_then {
     ( $cb:tt, ( & [ jdouble ] )  $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jdouble> )  ) $(, $($pass)* )? } };
     ( $cb:tt, ( & [ double ] )   $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jdouble> )  ) $(, $($pass)* )? } };
 
-    // Reject multi-dimensional primitive arrays by the &-array path only
-    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ $p:ident ] $(, $($pass:tt)* )? ) => {
-        compile_error!("Multi-dimensional primitive arrays are not supported")
+    // Handle multi-dimensional primitive arrays by the &-array path
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ jboolean ] $(, $($pass:tt)* )? ) => {
+        $cb!{ ( rust( $($open)* JPrimitiveArray<$crate::sys::jboolean> $($close)* ) ) $(, $($pass)* )? }
+    };
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ boolean ] $(, $($pass:tt)* )? ) => {
+        $cb!{ ( rust( $($open)* JPrimitiveArray<$crate::sys::jboolean> $($close)* ) ) $(, $($pass)* )? }
+    };
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ jbyte ] $(, $($pass:tt)* )? ) => {
+        $cb!{ ( rust( $($open)* JPrimitiveArray<$crate::sys::jbyte> $($close)* ) ) $(, $($pass)* )? }
+    };
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ byte ] $(, $($pass:tt)* )? ) => {
+        $cb!{ ( rust( $($open)* JPrimitiveArray<$crate::sys::jbyte> $($close)* ) ) $(, $($pass)* )? }
+    };
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ jchar ] $(, $($pass:tt)* )? ) => {
+        $cb!{ ( rust( $($open)* JPrimitiveArray<$crate::sys::jchar> $($close)* ) ) $(, $($pass)* )? }
+    };
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ char ] $(, $($pass:tt)* )? ) => {
+        $cb!{ ( rust( $($open)* JPrimitiveArray<$crate::sys::jchar> $($close)* ) ) $(, $($pass)* )? }
+    };
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ jshort ] $(, $($pass:tt)* )? ) => {
+        $cb!{ ( rust( $($open)* JPrimitiveArray<$crate::sys::jshort> $($close)* ) ) $(, $($pass)* )? }
+    };
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ short ] $(, $($pass:tt)* )? ) => {
+        $cb!{ ( rust( $($open)* JPrimitiveArray<$crate::sys::jshort> $($close)* ) ) $(, $($pass)* )? }
+    };
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ jint ] $(, $($pass:tt)* )? ) => {
+        $cb!{ ( rust( $($open)* JPrimitiveArray<$crate::sys::jint> $($close)* ) ) $(, $($pass)* )? }
+    };
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ int ] $(, $($pass:tt)* )? ) => {
+        $cb!{ ( rust( $($open)* JPrimitiveArray<$crate::sys::jint> $($close)* ) ) $(, $($pass)* )? }
+    };
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ jlong ] $(, $($pass:tt)* )? ) => {
+        $cb!{ ( rust( $($open)* JPrimitiveArray<$crate::sys::jlong> $($close)* ) ) $(, $($pass)* )? }
+    };
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ long ] $(, $($pass:tt)* )? ) => {
+        $cb!{ ( rust( $($open)* JPrimitiveArray<$crate::sys::jlong> $($close)* ) ) $(, $($pass)* )? }
+    };
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ jfloat ] $(, $($pass:tt)* )? ) => {
+        $cb!{ ( rust( $($open)* JPrimitiveArray<$crate::sys::jfloat> $($close)* ) ) $(, $($pass)* )? }
+    };
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ float ] $(, $($pass:tt)* )? ) => {
+        $cb!{ ( rust( $($open)* JPrimitiveArray<$crate::sys::jfloat> $($close)* ) ) $(, $($pass)* )? }
+    };
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ jdouble ] $(, $($pass:tt)* )? ) => {
+        $cb!{ ( rust( $($open)* JPrimitiveArray<$crate::sys::jdouble> $($close)* ) ) $(, $($pass)* )? }
+    };
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ double ] $(, $($pass:tt)* )? ) => {
+        $cb!{ ( rust( $($open)* JPrimitiveArray<$crate::sys::jdouble> $($close)* ) ) $(, $($pass)* )? }
     };
     // Object array recursion for &[[...]]
     ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ [ $($inner:tt)+ ] ] $(, $($pass:tt)* )? ) => {
@@ -1537,24 +1582,48 @@ jgen_bind_method!(
     javaFunction as rust_function_8,
     sig: (a: &JString, b: java.lang.String[], c: jint[]) -> void
 );
+
+// Test multi-dimensional primitive arrays with rust-like syntax
+jgen_bind_method!(
+    this: JFoo,
+    javaFunction as rust_function_10,
+    sig: (a: &[[jint]], b: &[[[jchar]]], c: &[[jdouble]]) -> &[[jbyte]]
+);
+
 fn main() {
     /*
     TODO:
-    - Add support multi-dimensional primitive arrays (e.g. int[][]) mapping to `JObjectArray<JPrimitiveArray<jint>>`
     - Output only one literal or format signature without a runtime if statement.
     - _call function should take a shared `&Env` if returning a primitive type or void.
      */
 
     // Test that primitive arrays now parse correctly
-    println!("Primitive array descriptors:");
+    println!("1D Primitive array descriptors:");
     println!("jint[] -> {}", jdesc_of!(jint[]));
     println!("jbyte[] -> {}", jdesc_of!(jbyte[]));
     println!("jchar[] -> {}", jdesc_of!(jchar[]));
 
+    println!("\n2D Primitive array descriptors:");
+    println!("jint[][] -> {}", jdesc_of!(jint[][]));
+    println!("jbyte[][] -> {}", jdesc_of!(jbyte[][]));
+    println!("jchar[][] -> {}", jdesc_of!(jchar[][]));
+
+    println!("\n3D Primitive array descriptors:");
+    println!("jint[][][] -> {}", jdesc_of!(jint[][][]));
+    println!("jchar[][][] -> {}", jdesc_of!(jchar[][][]));
+
+    println!("\nRust-like syntax descriptors:");
+    println!("&[[jint]] -> {}", jdesc_of!(&[[jint]]));
+    println!("&[[[jchar]]] -> {}", jdesc_of!(&[[[jchar]]]));
+
+    println!("\nBracket syntax descriptors:");
+    println!("[[jint]] -> {}", jdesc_of!([[jint]]));
+    println!("[[[jchar]]] -> {}", jdesc_of!([[[jchar]]]));
+
     let foo = JFoo::default();
     let mut env = Env::default();
     let method_7 = _rust_function_7_lookup(&mut env).unwrap();
-    let ret = _rust_function_6_call(
+    let _ret = _rust_function_6_call(
         &mut env,
         &foo,
         method_7,
@@ -1563,4 +1632,6 @@ fn main() {
         42,
     )
     .unwrap();
+
+    println!("\nMulti-dimensional primitive array method bindings work!");
 }
