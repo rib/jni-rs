@@ -1184,9 +1184,23 @@ macro_rules! _jni_call_from_norm_ret {
     };
 }
 
+// Helper macro to determine if a normalized return type is primitive (including void)
+macro_rules! _is_primitive_return {
+    ( prim ( $p:ident ) ) => {
+        true
+    };
+    ( obj ( $($rt:tt)+ ) as rust ( $($ret_as:tt)+ ) ) => {
+        false
+    };
+    ( rust ( $($ret_as:tt)+ ) ) => {
+        false
+    };
+}
+
 // Final emitter: we now have normalized args and ret; generate the whole fn
 macro_rules! _emit_method_call_fn {
     (
+        $envType:ty,
         $this:path,
         $rname:ident,
         ( $( $an:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* $(,)? ),
@@ -1194,7 +1208,7 @@ macro_rules! _emit_method_call_fn {
     ) => {
         paste! {
             fn [<_ $rname _call>](
-                env: &mut Env,
+                env: $envType,
                 this: &$this,
                 method_id: JMethodID,
                 $( $an: _param_ty_from_norm!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ) ),*
@@ -1217,14 +1231,32 @@ macro_rules! _emit_method_call_fn {
 
 // Glue: normalize ret after args are normalized
 macro_rules! _emit_call_fn {
-    // Accept grouped normalized return
+    // Primitive return types (including void) use &Env
     (
-        ( $($norm_ret:tt)+ ),
+        ( prim ( $($p:tt)+ ) ),
         $this:path,
         $rname:ident,
         ( $( $nargs:tt )* )
     ) => {
-        _emit_method_call_fn!( $this, $rname, ( $( $nargs )* ), ( $($norm_ret)+ ) );
+        _emit_method_call_fn!( &Env, $this, $rname, ( $( $nargs )* ), ( prim( $($p)+ ) ) );
+    };
+    // Object return types use &mut Env
+    (
+        ( obj ( $($rt:tt)+ ) as rust ( $($ret_as:tt)+ ) ),
+        $this:path,
+        $rname:ident,
+        ( $( $nargs:tt )* )
+    ) => {
+        _emit_method_call_fn!( &mut Env, $this, $rname, ( $( $nargs )* ), ( obj( $($rt)+ ) as rust( $($ret_as)+ ) ) );
+    };
+    // Rust return types use &mut Env
+    (
+        ( rust ( $($ret_as:tt)+ ) ),
+        $this:path,
+        $rname:ident,
+        ( $( $nargs:tt )* )
+    ) => {
+        _emit_method_call_fn!( &mut Env, $this, $rname, ( $( $nargs )* ), ( rust( $($ret_as)+ ) ) );
     };
 }
 
@@ -1337,7 +1369,7 @@ impl Env {
         Ok(std::ptr::null_mut())
     }
 
-    fn get_raw(&mut self) -> *mut jni::sys::JNIEnv {
+    fn get_raw(&self) -> *mut jni::sys::JNIEnv {
         std::ptr::null_mut()
     }
 
@@ -1374,6 +1406,7 @@ trait Reference {
 mod objects {
     use std::borrow::Cow;
 
+    #[derive(Default)]
     pub struct JObject;
     impl AsRef<JObject> for JObject {
         fn as_ref(&self) -> &JObject {
@@ -1594,7 +1627,6 @@ fn main() {
     /*
     TODO:
     - Output only one literal or format signature without a runtime if statement.
-    - _call function should take a shared `&Env` if returning a primitive type or void.
      */
 
     // Test that primitive arrays now parse correctly
@@ -1622,16 +1654,31 @@ fn main() {
 
     let foo = JFoo::default();
     let mut env = Env::default();
-    let method_7 = _rust_function_7_lookup(&mut env).unwrap();
-    let _ret = _rust_function_6_call(
-        &mut env,
+
+    // Test a primitive return function (should use &Env)
+    let method_0 = _rust_function_0_lookup(&mut env).unwrap();
+    let _void_ret = _rust_function_0_call(
+        &env, // Note: &Env for primitive return (void)
         &foo,
-        method_7,
+        method_0,
+        &JObject::default(), // java.lang.String normalized as JObject
+        42,
+    )
+    .unwrap();
+
+    // Test an object return function (should use &mut Env)
+    let method_6 = _rust_function_6_lookup(&mut env).unwrap();
+    let _obj_ret = _rust_function_6_call(
+        &mut env, // Note: &mut Env for object return
+        &foo,
+        method_6,
         &JString::default(),
         &JString::default(),
         42,
     )
     .unwrap();
 
-    println!("\nMulti-dimensional primitive array method bindings work!");
+    println!("\nMethod bindings work!");
+    println!("✓ Primitive return functions use &Env");
+    println!("✓ Object return functions use &mut Env");
 }
