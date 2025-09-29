@@ -807,10 +807,19 @@ macro_rules! build_sig_format {
     ) => {
         {
             let mut buf = String::new();
+            fn extend_with_internal(buf: &mut String, s: &str) {
+                if s.len() > 1 && s.chars().nth(0) != Some('[') {
+                    buf.push('L');
+                    buf.extend(s.chars().map(|c| if c == '.' { '/' } else { c }));
+                    buf.push(';');
+                } else {
+                    buf.extend(s.chars().map(|c| if c == '.' { '/' } else { c }));
+                }
+            }
             buf.push_str("(");
-            $( buf.extend(rust_jdesc!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ).chars().map(|c| if c == '.' { '/' } else { c })); )*
+            $( extend_with_internal(&mut buf, rust_jdesc!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? )); )*
             buf.push_str(")");
-            buf.extend(rust_jdesc!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? ).chars().map(|c| if c == '.' { '/' } else { c }));
+            extend_with_internal(&mut buf, rust_jdesc!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? ));
             buf.push_str("\0");
             buf
         }
@@ -1620,6 +1629,21 @@ jgen_bind_method!(
     sig: (a: &[[jint]], b: &[[[jchar]]], c: &[[jdouble]]) -> &[[jbyte]]
 );
 
+// Test macro that actually calls the real normalization functions
+macro_rules! print_jni_sig_for {
+    ( ( $($args:tt)* ) -> $($ret:tt)+ ) => {
+        {
+            let sig = jnorm_args_then!( @expr _lookup_sig_from_norm_args, ( $($args)* ), ( $($ret)+ ) );
+            println!("Signature: ({}) -> {} = {}",
+                stringify!($($args)*),
+                stringify!($($ret)+),
+                sig
+            );
+            sig
+        }
+    };
+}
+
 fn main() {
     /*
     TODO:
@@ -1628,6 +1652,23 @@ fn main() {
     - Output only one literal or format signature without a runtime if statement.
      */
 
+    // Test the new test_lookup_sig macro with simple primitive signature
+    println!("=== Testing JNI Signature Generation ===");
+    println!("Testing with simple primitive signature:\n");
+
+    let sig = print_jni_sig_for!((a: jint, b: jlong) -> void);
+    assert_eq!(sig, "(IJ)V\0");
+
+    let sig = print_jni_sig_for!((a: jint, b: &JString) -> void);
+    assert_eq!(sig, "(ILjava/lang/String;)V\0");
+
+    let sig = print_jni_sig_for!((a: jint, b: java.lang.String) -> java.lang.String);
+    assert_eq!(sig, "(ILjava/lang/String;)Ljava/lang/String;\0");
+
+    let sig = print_jni_sig_for!((a: jint, b: [java.lang.String]) -> [java.lang.String]);
+    assert_eq!(sig, "(I[Ljava/lang/String;)[Ljava/lang/String;\0");
+
+    println!("\n=== Testing Individual Descriptors ===");
     // Test that primitive arrays now parse correctly
     println!("1D Primitive array descriptors:");
     println!("jint[] -> {}", jdesc_of!(jint[]));
