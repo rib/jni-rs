@@ -222,31 +222,31 @@ macro_rules! rust_type_for_java_array_default {
 macro_rules! jnorm_type_then {
     // ----- Rust reference arrays -----
     ( $cb:tt, ( & [ [ $($inner:tt)+ ] ] ) $(, $($pass:tt)* )? ) => {
-        jnorm_type_then!(@objarr $cb, () (), [ [ $($inner)+ ] ] $(, $($pass)* )? )
+        jnorm_type_then!{@objarr $cb, () (), [ [ $($inner)+ ] ] $(, $($pass)* )? }
     };
     ( $cb:tt, ( & [ $ty:path ] ) $(, $($pass:tt)* )? ) => {
-        $cb!( ( rust( JObjectArray<$ty> ) ) $(, $($pass)* )? )
+        $cb!{ ( rust( JObjectArray<$ty> ) ) $(, $($pass)* )? }
     };
     ( $cb:tt, ( & [ & $ty:path ] ) $(, $($pass:tt)* )? ) => {
-        $cb!( ( rust( JObjectArray<$ty> ) ) $(, $($pass)* )? )
+        $cb!{ ( rust( JObjectArray<$ty> ) ) $(, $($pass)* )? }
     };
     // & [primitive]
-    ( $cb:tt, ( & [ jboolean ] ) $(, $($pass:tt)* )? ) => { $cb!( ( rust( JPrimitiveArray<jboolean> ) ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( & [ boolean ] )  $(, $($pass:tt)* )? ) => { $cb!( ( rust( JPrimitiveArray<jboolean> ) ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( & [ jbyte ] )    $(, $($pass:tt)* )? ) => { $cb!( ( rust( JPrimitiveArray<jbyte> )    ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( & [ byte ] )     $(, $($pass:tt)* )? ) => { $cb!( ( rust( JPrimitiveArray<jbyte> )    ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( & [ jchar ] )    $(, $($pass:tt)* )? ) => { $cb!( ( rust( JPrimitiveArray<jchar> )    ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( & [ char ] )     $(, $($pass:tt)* )? ) => { $cb!( ( rust( JPrimitiveArray<jchar> )    ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( & [ jshort ] )   $(, $($pass:tt)* )? ) => { $cb!( ( rust( JPrimitiveArray<jshort> )   ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( & [ short ] )    $(, $($pass:tt)* )? ) => { $cb!( ( rust( JPrimitiveArray<jshort> )   ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( & [ jint ] )     $(, $($pass:tt)* )? ) => { $cb!( ( rust( JPrimitiveArray<jint> )     ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( & [ int ] )      $(, $($pass:tt)* )? ) => { $cb!( ( rust( JPrimitiveArray<jint> )     ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( & [ jlong ] )    $(, $($pass:tt)* )? ) => { $cb!( ( rust( JPrimitiveArray<jlong> )    ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( & [ long ] )     $(, $($pass:tt)* )? ) => { $cb!( ( rust( JPrimitiveArray<jlong> )    ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( & [ jfloat ] )   $(, $($pass:tt)* )? ) => { $cb!( ( rust( JPrimitiveArray<jfloat> )   ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( & [ float ] )    $(, $($pass:tt)* )? ) => { $cb!( ( rust( JPrimitiveArray<jfloat> )   ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( & [ jdouble ] )  $(, $($pass:tt)* )? ) => { $cb!( ( rust( JPrimitiveArray<jdouble> )  ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( & [ double ] )   $(, $($pass:tt)* )? ) => { $cb!( ( rust( JPrimitiveArray<jdouble> )  ) $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ jboolean ] ) $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jboolean> ) ) $(, $($pass)* )? } };
+    ( $cb:tt, ( & [ boolean ] )  $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jboolean> ) ) $(, $($pass)* )? } };
+    ( $cb:tt, ( & [ jbyte ] )    $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jbyte> )    ) $(, $($pass)* )? } };
+    ( $cb:tt, ( & [ byte ] )     $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jbyte> )    ) $(, $($pass)* )? } };
+    ( $cb:tt, ( & [ jchar ] )    $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jchar> )    ) $(, $($pass)* )? } };
+    ( $cb:tt, ( & [ char ] )     $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jchar> )    ) $(, $($pass)* )? } };
+    ( $cb:tt, ( & [ jshort ] )   $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jshort> )   ) $(, $($pass)* )? } };
+    ( $cb:tt, ( & [ short ] )    $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jshort> )   ) $(, $($pass)* )? } };
+    ( $cb:tt, ( & [ jint ] )     $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jint> )     ) $(, $($pass)* )? } };
+    ( $cb:tt, ( & [ int ] )      $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jint> )     ) $(, $($pass)* )? } };
+    ( $cb:tt, ( & [ jlong ] )    $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jlong> )    ) $(, $($pass)* )? } };
+    ( $cb:tt, ( & [ long ] )     $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jlong> )    ) $(, $($pass)* )? } };
+    ( $cb:tt, ( & [ jfloat ] )   $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jfloat> )   ) $(, $($pass)* )? } };
+    ( $cb:tt, ( & [ float ] )    $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jfloat> )   ) $(, $($pass)* )? } };
+    ( $cb:tt, ( & [ jdouble ] )  $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jdouble> )  ) $(, $($pass)* )? } };
+    ( $cb:tt, ( & [ double ] )   $(, $($pass:tt)* )? ) => { $cb!{ ( rust( JPrimitiveArray<jdouble> )  ) $(, $($pass)* )? } };
 
     // Reject multi-dimensional primitive arrays by the &-array path only
     ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ $p:ident ] $(, $($pass:tt)* )? ) => {
@@ -254,84 +254,84 @@ macro_rules! jnorm_type_then {
     };
     // Object array recursion for &[[...]]
     ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ [ $($inner:tt)+ ] ] $(, $($pass:tt)* )? ) => {
-        jnorm_type_then!(@objarr $cb, ( $($open)* JObjectArray< ) ( > $($close)* ), [ $($inner)+ ] $(, $($pass)* )? )
+        jnorm_type_then!{@objarr $cb, ( $($open)* JObjectArray< ) ( > $($close)* ), [ $($inner)+ ] $(, $($pass)* )? }
     };
     ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ $ty:path ] $(, $($pass:tt)* )? ) => {
-        $cb!( ( rust( $($open)* $ty $($close)* ) ) $(, $($pass)* )? )
+        $cb!{ ( rust( $($open)* $ty $($close)* ) ) $(, $($pass)* )? }
     };
     ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ & $ty:path ] $(, $($pass:tt)* )? ) => {
-        $cb!( ( rust( $($open)* $ty $($close)* ) ) $(, $($pass)* )? )
+        $cb!{ ( rust( $($open)* $ty $($close)* ) ) $(, $($pass)* )? }
     };
 
     // ----- Java-style arrays (non-Rust), N-dimensional -----
 
     // Bracket form with explicit `as` (any dimension)
     ( $cb:tt, ( [ $($arr:tt)+ ] as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
-        $cb!( ( obj( [ $($arr)+ ] ) as rust( $as_ty ) ) $(, $($pass)* )? )
+        $cb!{ ( obj( [ $($arr)+ ] ) as rust( $as_ty ) ) $(, $($pass)* )? }
     };
     // Bracket form without `as` (any dimension)
     ( $cb:tt, ( [ $($arr:tt)+ ] ) $(, $($pass:tt)* )? ) => {
-        $cb!( ( obj( [ $($arr)+ ] ) as rust( rust_type_for_java_array_default!([ $($arr)+ ]) ) ) $(, $($pass)* )? )
+        $cb!{ ( obj( [ $($arr)+ ] ) as rust( rust_type_for_java_array_default!([ $($arr)+ ]) ) ) $(, $($pass)* )? }
     };
 
     // Suffix form → rewrite to bracket form
     ( $cb:tt, ( $first:ident . $($rest:tt)+ [ ] $($tail:tt)* ) $(, $($pass:tt)* )? ) => {
-        jnorm_type_then!(@suffix $cb, ( [ $first . $($rest)+ ] ), $($tail)* $(, $($pass)* )? )
+        jnorm_type_then!{@suffix $cb, ( [ $first . $($rest)+ ] ), $($tail)* $(, $($pass)* )? }
     };
     ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* [ ] $($tail:tt)* ) $(, $($pass:tt)* )? ) => {
-        jnorm_type_then!(@suffix $cb, ( [ . $outer $( :: $inner )* ] ), $($tail)* $(, $($pass)* )? )
+        jnorm_type_then!{@suffix $cb, ( [ . $outer $( :: $inner )* ] ), $($tail)* $(, $($pass)* )? }
     };
     ( $cb:tt, ( $p:ident [ ] $($tail:tt)* ) $(, $($pass:tt)* )? ) => {
-        jnorm_type_then!(@suffix $cb, ( [ $p ] ), $($tail)* $(, $($pass)* )? )
+        jnorm_type_then!{@suffix $cb, ( [ $p ] ), $($tail)* $(, $($pass)* )? }
     };
     // Internal suffix recursion
     ( @suffix $cb:tt, ( [ $($acc:tt)+ ] ), [ ] $($tail:tt)* $(, $($pass:tt)* )? ) => {
-        jnorm_type_then!(@suffix $cb, ( [ [ $($acc)+ ] ] ), $($tail)* $(, $($pass)* )? )
+        jnorm_type_then!{@suffix $cb, ( [ [ $($acc)+ ] ] ), $($tail)* $(, $($pass)* )? }
     };
     ( @suffix $cb:tt, ( [ $($acc:tt)+ ] ), as $as_ty:ty $(, $($pass:tt)* )? ) => {
-        $cb!( ( obj( [ $($acc)+ ] ) as rust( $as_ty ) ) $(, $($pass)* )? )
+        $cb!{ ( obj( [ $($acc)+ ] ) as rust( $as_ty ) ) $(, $($pass)* )? }
     };
     ( @suffix $cb:tt, ( [ $($acc:tt)+ ] ), $(, $($pass:tt)* )? ) => {
-        $cb!( ( obj( [ $($acc)+ ] ) as rust( rust_type_for_java_array_default!([ $($acc)+ ]) ) ) $(, $($pass)* )? )
+        $cb!{ ( obj( [ $($acc)+ ] ) as rust( rust_type_for_java_array_default!([ $($acc)+ ]) ) ) $(, $($pass)* )? }
     };
 
     // ----- Simple Rust ref: &Path -----
-    ( $cb:tt, ( & $rust:ty ) $(, $($pass:tt)* )? ) => { $cb!( ( rust( $rust ) ) $(, $($pass)* )? ) };
+    ( $cb:tt, ( & $rust:ty ) $(, $($pass:tt)* )? ) => { $cb!{ ( rust( $rust ) ) $(, $($pass)* )? } };
 
     // ----- Java object type -----
     ( $cb:tt, ( $first:ident . $($rest:tt)+ as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
-        $cb!( ( obj( $first . $($rest)+ ) as rust( $as_ty ) ) $(, $($pass)* )? )
+        $cb!{ ( obj( $first . $($rest)+ ) as rust( $as_ty ) ) $(, $($pass)* )? }
     };
     ( $cb:tt, ( $first:ident . $($rest:tt)+ ) $(, $($pass:tt)* )? ) => {
-        $cb!( ( obj( $first . $($rest)+ ) as rust( JObject ) ) $(, $($pass)* )? )
+        $cb!{ ( obj( $first . $($rest)+ ) as rust( $crate::objects::JObject ) ) $(, $($pass)* )? }
     };
 
     // ----- Java object type (default package) -----
     ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
-        $cb!( ( obj( . $outer $( :: $inner )* ) as rust( $as_ty ) ) $(, $($pass)* )? )
+        $cb!{ ( obj( . $outer $( :: $inner )* ) as rust( $as_ty ) ) $(, $($pass)* )? }
     };
     ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* ) $(, $($pass:tt)* )? ) => {
-        $cb!( ( obj( . $outer $( :: $inner )* ) as rust( JObject ) ) $(, $($pass)* )? )
+        $cb!{ ( obj( . $outer $( :: $inner )* ) as rust( $crate::objects::JObject ) ) $(, $($pass)* )? }
     };
 
     // ----- Primitives (canonicalize) -----
-    ( $cb:tt, ( void )     $(, $($pass:tt)* )? ) => { $cb!( ( prim( void )     ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( jboolean ) $(, $($pass:tt)* )? ) => { $cb!( ( prim( jboolean ) ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( boolean )  $(, $($pass:tt)* )? ) => { $cb!( ( prim( jboolean ) ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( jbyte )    $(, $($pass:tt)* )? ) => { $cb!( ( prim( jbyte )    ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( byte )     $(, $($pass:tt)* )? ) => { $cb!( ( prim( jbyte )    ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( jchar )    $(, $($pass:tt)* )? ) => { $cb!( ( prim( jchar )    ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( char )     $(, $($pass:tt)* )? ) => { $cb!( ( prim( jchar )    ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( jshort )   $(, $($pass:tt)* )? ) => { $cb!( ( prim( jshort )   ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( short )    $(, $($pass:tt)* )? ) => { $cb!( ( prim( jshort )   ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( jint )     $(, $($pass:tt)* )? ) => { $cb!( ( prim( jint )     ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( int )      $(, $($pass:tt)* )? ) => { $cb!( ( prim( jint )     ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( jlong )    $(, $($pass:tt)* )? ) => { $cb!( ( prim( jlong )    ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( long )     $(, $($pass:tt)* )? ) => { $cb!( ( prim( jlong )    ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( jfloat )   $(, $($pass:tt)* )? ) => { $cb!( ( prim( jfloat )   ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( float )    $(, $($pass:tt)* )? ) => { $cb!( ( prim( jfloat )   ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( jdouble )  $(, $($pass:tt)* )? ) => { $cb!( ( prim( jdouble )  ) $(, $($pass)* )? ) };
-    ( $cb:tt, ( double )   $(, $($pass:tt)* )? ) => { $cb!( ( prim( jdouble )  ) $(, $($pass)* )? ) };
+    ( $cb:tt, ( void )     $(, $($pass:tt)* )? ) => { $cb!{ ( prim( void )     ) $(, $($pass)* )? } };
+    ( $cb:tt, ( jboolean ) $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jboolean ) ) $(, $($pass)* )? } };
+    ( $cb:tt, ( boolean )  $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jboolean ) ) $(, $($pass)* )? } };
+    ( $cb:tt, ( jbyte )    $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jbyte )    ) $(, $($pass)* )? } };
+    ( $cb:tt, ( byte )     $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jbyte )    ) $(, $($pass)* )? } };
+    ( $cb:tt, ( jchar )    $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jchar )    ) $(, $($pass)* )? } };
+    ( $cb:tt, ( char )     $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jchar )    ) $(, $($pass)* )? } };
+    ( $cb:tt, ( jshort )   $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jshort )   ) $(, $($pass)* )? } };
+    ( $cb:tt, ( short )    $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jshort )   ) $(, $($pass)* )? } };
+    ( $cb:tt, ( jint )     $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jint )     ) $(, $($pass)* )? } };
+    ( $cb:tt, ( int )      $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jint )     ) $(, $($pass)* )? } };
+    ( $cb:tt, ( jlong )    $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jlong )    ) $(, $($pass)* )? } };
+    ( $cb:tt, ( long )     $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jlong )    ) $(, $($pass)* )? } };
+    ( $cb:tt, ( jfloat )   $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jfloat )   ) $(, $($pass)* )? } };
+    ( $cb:tt, ( float )    $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jfloat )   ) $(, $($pass)* )? } };
+    ( $cb:tt, ( jdouble )  $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jdouble )  ) $(, $($pass)* )? } };
+    ( $cb:tt, ( double )   $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jdouble )  ) $(, $($pass)* )? } };
 
     // ----- Already-normalized (idempotent) -----
     ( $cb:tt, ( prim ( $($p:tt)+ ) ) $(, $($pass:tt)* )? ) => { $cb!( ( prim( $($p)+ ) ) $(, $($pass)* )? ) };
@@ -339,25 +339,57 @@ macro_rules! jnorm_type_then {
     ( $cb:tt, ( rust ( $as:ty ) ) $(, $($pass:tt)* )? ) => { $cb!( ( rust( $as ) ) $(, $($pass)* )? ) };
 }
 
+// Shims: route from normalization macros to the real callback,
+// adding a trailing semicolon only when generating items.
+macro_rules! __then_item {
+    ( ( $($norm:tt)+ ), $real_cb:tt $(, $rest:tt )* ) => {
+        $real_cb!( ( $($norm)+ ) $(, $rest )* );
+    };
+}
+macro_rules! __then_expr {
+    ( ( $($norm:tt)+ ), $real_cb:tt $(, $rest:tt )* ) => {
+        $real_cb!( ( $($norm)+ ) $(, $rest )* )
+    };
+}
+
 // Rework jnorm_ret_then to use jnorm_type_then (variadic; forwards extra tokens)
 macro_rules! jnorm_ret_then {
-    ( $cb:ident, ( $($ret:tt)+ ) $(, $($pass:tt)* )? ) => {
-        jnorm_type_then!( $cb, ( $($ret)+ ) $(, $($pass)* )? )
+    ( @ expr $cb:tt, ( $($ret:tt)+ ) $(, $($pass:tt)* )? ) => {
+        jnorm_type_then!( __then_expr, ( $($ret)+ ) $(, $cb, $($pass)* )? )
+    };
+    ( @ item $cb:tt, ( $($ret:tt)+ ) $(, $($pass:tt)* )? ) => {
+        jnorm_type_then!( __then_item, ( $($ret)+ ) $(, $cb, $($pass)* )? );
+    };
+    // Back-compat: default to expr
+    ( $cb:tt, ( $($ret:tt)+ ) $(, $($pass:tt)* )? ) => {
+        jnorm_ret_then!( @ expr $cb, ( $($ret)+ ) $(, $($pass)* )? )
     };
 }
 
 // Normalize an args list, then invoke a callback macro that expects normalized args:
 //   jnorm_args_then!(CB, ( a: TyA, b: TyB, ... ) [, extra tokens...])
-// Expands to:
-//   CB!( ( a: <normA>, b: <normB>, ... ) [, extra tokens...] )
+// Add @expr | @item to control whether the callback emits an expression or items.
 macro_rules! jnorm_args_then {
-    // With extra trailing tokens to pass to the callback
-    ( $cb:tt, ( $($args:tt)* ), $($pass:tt)+ ) => {
-        jnorm_args_then_munch!( @ with_pass $cb, (), ( $($pass)+ ), $($args)* )
+    // Explicit context + pass
+    ( @ expr $cb:tt, ( $($args:tt)* ), $($pass:tt)+ ) => {
+        jnorm_args_then_munch!( @ with_pass __then_expr, (), ( $cb, $($pass)+ ), $($args)* )
     };
-    // No extra trailing tokens
+    ( @ item $cb:tt, ( $($args:tt)* ), $($pass:tt)+ ) => {
+        jnorm_args_then_munch!( @ with_pass __then_item, (), ( $cb, $($pass)+ ), $($args)* );
+    };
+    // Explicit context, no pass
+    ( @ expr $cb:tt, ( $($args:tt)* ) ) => {
+        jnorm_args_then_munch!( @ no_pass __then_expr, (), ( $cb ), $($args)* )
+    };
+    ( @ item $cb:tt, ( $($args:tt)* ) ) => {
+        jnorm_args_then_munch!( @ no_pass __then_item, (), ( $cb ), $($args)* );
+    };
+    // Back-compat: default to expr
+    ( $cb:tt, ( $($args:tt)* ), $($pass:tt)+ ) => {
+        jnorm_args_then!( @ expr $cb, ( $($args)* ), $($pass)+ )
+    };
     ( $cb:tt, ( $($args:tt)* ) ) => {
-        jnorm_args_then_munch!( @ no_pass $cb, (), (), $($args)* )
+        jnorm_args_then!( @ expr $cb, ( $($args)* ) )
     };
 }
 
@@ -366,7 +398,7 @@ macro_rules! jnorm_args_then {
 macro_rules! jnorm_args_then_munch {
     // End of list (with pass)
     ( @ with_pass $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)+ ) ) => {
-        $cb!( ( $($acc)* ), $($pass)+ )
+        $cb!{ ( $($acc)* ), $($pass)+ }
     };
     // End of list (no pass)
     ( @ no_pass $cb:tt, ( $($acc:tt)* ), () ) => {
@@ -376,101 +408,101 @@ macro_rules! jnorm_args_then_munch {
     // ---------- With trailing comma ----------
     // &[[...]],
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident : & [ [ $($inner:tt)+ ] ] , $($rest:tt)* ) => {
-        jnorm_type_then!( jnorm_args_then_push, ( & [ [ $($inner)+ ] ] ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)* )
+        jnorm_type_then!{ jnorm_args_then_push, ( & [ [ $($inner)+ ] ] ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)* }
     };
     // &[...],
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident : & [ $($inner:tt)+ ] , $($rest:tt)* ) => {
-        jnorm_type_then!( jnorm_args_then_push, ( & [ $($inner)+ ] ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)* )
+        jnorm_type_then!{ jnorm_args_then_push, ( & [ $($inner)+ ] ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)* }
     };
     // &Path,
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident : & $rust:ty , $($rest:tt)* ) => {
-        jnorm_type_then!( jnorm_args_then_push, ( & $rust ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)* )
+        jnorm_type_then!{ jnorm_args_then_push, ( & $rust ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)* }
     };
     // java.name with as,
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
       $n:ident : $first:ident $( . $seg:ident )+ $( :: $inner:ident )* as $as_ty:ty , $($rest:tt)* ) => {
-        jnorm_type_then!(
+        jnorm_type_then!{
             jnorm_args_then_push,
             ( $first $( . $seg )+ $( :: $inner )* as $as_ty ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)*
-        )
+        }
     };
     // java.name,
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
       $n:ident : $first:ident $( . $seg:ident )+ $( :: $inner:ident )* , $($rest:tt)* ) => {
-        jnorm_type_then!(
+        jnorm_type_then!{
             jnorm_args_then_push,
             ( $first $( . $seg )+ $( :: $inner )* ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)*
-        )
+        }
     };
     // .Default::Inner with as,
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
       $n:ident : . $outer:ident $( :: $inner:ident )* as $as_ty:ty , $($rest:tt)* ) => {
-        jnorm_type_then!( jnorm_args_then_push, ( . $outer $( :: $inner )* as $as_ty ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)* )
+        jnorm_type_then!{ jnorm_args_then_push, ( . $outer $( :: $inner )* as $as_ty ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)* }
     };
     // .Default::Inner,
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
       $n:ident : . $outer:ident $( :: $inner:ident )* , $($rest:tt)* ) => {
-        jnorm_type_then!( jnorm_args_then_push, ( . $outer $( :: $inner )* ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)* )
+        jnorm_type_then!{ jnorm_args_then_push, ( . $outer $( :: $inner )* ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)* }
     };
     // primitive,
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
       $n:ident : $p:ident , $($rest:tt)* ) => {
-        jnorm_type_then!( jnorm_args_then_push, ( $p ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)* )
+        jnorm_type_then!{ jnorm_args_then_push, ( $p ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)* }
     };
 
     // ---------- Last element (no trailing comma) ----------
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident : & [ [ $($inner:tt)+ ] ] ) => {
-        jnorm_type_then!( jnorm_args_then_push, ( & [ [ $($inner)+ ] ] ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n )
+        jnorm_type_then!{ jnorm_args_then_push, ( & [ [ $($inner)+ ] ] ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n }
     };
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident : & [ $($inner:tt)+ ] ) => {
-        jnorm_type_then!( jnorm_args_then_push, ( & [ $($inner)+ ] ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n )
+        jnorm_type_then!{ jnorm_args_then_push, ( & [ $($inner)+ ] ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n }
     };
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident : & $rust:ty ) => {
-        jnorm_type_then!( jnorm_args_then_push, ( & $rust ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n )
+        jnorm_type_then!{ jnorm_args_then_push, ( & $rust ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n }
     };
     // java.name with as
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
       $n:ident : $first:ident $( . $seg:ident )+ $( :: $inner:ident )* as $as_ty:ty ) => {
-        jnorm_type_then!(
+        jnorm_type_then!{
             jnorm_args_then_push,
             ( $first $( . $seg )+ $( :: $inner )* as $as_ty ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
-        )
+        }
     };
     // java.name
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
       $n:ident : $first:ident $( . $seg:ident )+ $( :: $inner:ident )* ) => {
-        jnorm_type_then!(
+        jnorm_type_then!{
             jnorm_args_then_push,
             ( $first $( . $seg )+ $( :: $inner )* ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
-        )
+        }
     };
     // .Default::Inner with as
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
       $n:ident : . $outer:ident $( :: $inner:ident )* as $as_ty:ty ) => {
-        jnorm_type_then!( jnorm_args_then_push, ( . $outer $( :: $inner )* as $as_ty ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n )
+        jnorm_type_then!{ jnorm_args_then_push, ( . $outer $( :: $inner )* as $as_ty ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n }
     };
     // .Default::Inner
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
       $n:ident : . $outer:ident $( :: $inner:ident )* ) => {
-        jnorm_type_then!( jnorm_args_then_push, ( . $outer $( :: $inner )* ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n )
+        jnorm_type_then!{ jnorm_args_then_push, ( . $outer $( :: $inner )* ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n }
     };
     // primitive
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident : $p:ident ) => {
-        jnorm_type_then!( jnorm_args_then_push, ( $p ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n )
+        jnorm_type_then!{ jnorm_args_then_push, ( $p ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n }
     };
 }
 
 // Push one normalized arg into accumulator and continue munching.
 macro_rules! jnorm_args_then_push {
     ( ( $($norm:tt)+ ), $cb:tt, @ $mode:ident, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident, $($rest:tt)* ) => {
-        jnorm_args_then_munch!( @ $mode $cb, ( $($acc)* $n: $($norm)+ , ), ( $($pass)* ), $($rest)* )
+        jnorm_args_then_munch!{ @ $mode $cb, ( $($acc)* $n: $($norm)+ , ), ( $($pass)* ), $($rest)* }
     };
     ( ( $($norm:tt)+ ), $cb:tt, @ $mode:ident, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident ) => {
-        jnorm_args_then_munch!( @ $mode $cb, ( $($acc)* $n: $($norm)+ ), ( $($pass)* ) )
+        jnorm_args_then_munch!{ @ $mode $cb, ( $($acc)* $n: $($norm)+ ), ( $($pass)* ) }
     };
 }
 
@@ -526,7 +558,7 @@ macro_rules! _param_ty_from_norm {
     ( prim ( $p:ident ) ) => {
         $crate::sys::$p
     };
-    ( obj ( $(_j:tt)+ ) as rust ( $as_ty:ty ) ) => {
+    ( obj ( $( $j:tt )+ ) as rust ( $as_ty:ty ) ) => {
         &$as_ty
     };
     ( rust ( $as_ty:ty ) ) => {
@@ -540,7 +572,7 @@ macro_rules! _ret_ty_from_norm {
     ( prim ( $p:ident ) ) => {
         $crate::sys::$p
     };
-    ( obj ( $(_j:tt)+ ) as rust ( $as_ty:ty ) ) => {
+    ( obj ( $( $j:tt )+ ) as rust ( $as_ty:ty ) ) => {
         $as_ty
     };
     ( rust ( $as_ty:ty ) ) => {
@@ -564,12 +596,12 @@ macro_rules! build_sig_literal {
     ( ( $( $n:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* )
       -> ( $rk:ident ( $($rt:tt)* ) $( as rust ( $($ret_as:tt)+ ) )? )
     ) => {
-        concat!(
+        String::from(concat!(
             "(",
             $( _desc_piece!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ) ),*,
             ")",
             _desc_piece!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? )
-        )
+        ))
     };
 }
 macro_rules! build_sig_format {
@@ -609,7 +641,7 @@ macro_rules! _lookup_sig_emit {
 }
 macro_rules! _lookup_sig_from_norm_args {
     ( ( $($norm_args:tt)* ), ( $($raw_ret:tt)+ ) ) => {
-        jnorm_ret_then!( _lookup_sig_emit, ( $($raw_ret)+ ), ( $($norm_args)* ) )
+        jnorm_ret_then!( @ expr _lookup_sig_emit, ( $($raw_ret)+ ), ( $($norm_args)* ) )
     };
 }
 
@@ -774,7 +806,7 @@ macro_rules! jgen_method_lookup_fn {
             fn [<_ $rname _lookup>](env: &mut Env) -> Result<JMethodID> {
                 let class: &JClass = $this::lookup_class()?;
 
-                let sig = jnorm_args_then!( _lookup_sig_from_norm_args, ( $($args)* ), ( $($ret)+ ) );
+                let sig = jnorm_args_then!( @expr _lookup_sig_from_norm_args, ( $($args)* ), ( $($ret)+ ) );
 
                 env.get_method_id(class, stringify!($jname), &sig)
             }
@@ -826,9 +858,10 @@ macro_rules! _emit_call_fn {
         $rname:ident,
         ( $( $nargs:tt )* )
     ) => {
-        _emit_method_call_fn!( $this, $rname, ( $( $nargs )* ), ( $($norm_ret)+ ) )
+        _emit_method_call_fn!( $this, $rname, ( $( $nargs )* ), ( $($norm_ret)+ ) );
     };
 }
+
 macro_rules! _emit_call_from_norm_args {
     (
         ( $( $nargs:tt )* ),
@@ -836,7 +869,7 @@ macro_rules! _emit_call_from_norm_args {
         $rname:ident,
         ( $($raw_ret:tt)+ )
     ) => {
-        jnorm_ret_then!( _emit_call_fn, ( $($raw_ret)+ ), $this, $rname, ( $( $nargs )* ) )
+        jnorm_ret_then!( @ item _emit_call_fn, ( $($raw_ret)+ ), $this, $rname, ( $( $nargs )* ) );
     };
 }
 
@@ -848,7 +881,7 @@ macro_rules! jgen_method_call_fn {
         ( $($args:tt)* ),
         ( $($ret:tt)+ )
     ) => {
-        jnorm_args_then!( _emit_call_from_norm_args, ( $($args)* ), $this, $rname, ( $($ret)+ ) );
+        jnorm_args_then!( @item _emit_call_from_norm_args, ( $($args)* ), $this, $rname, ( $($ret)+ ) );
     };
 }
 
@@ -941,6 +974,12 @@ impl fmt::Display for JNIStr {
     }
 }
 
+mod sys {
+    pub use jni::sys::{jboolean, jbyte, jchar, jdouble, jfloat, jint, jlong, jshort, jvalue};
+}
+mod refs {
+    pub(crate) use super::Reference;
+}
 trait Reference {
     fn class_name() -> Cow<'static, CStr>;
     fn as_raw(&self) -> jni::sys::jobject;
@@ -952,6 +991,20 @@ impl Reference for JString {
     }
     fn as_raw(&self) -> jni::sys::jobject {
         core::ptr::null_mut()
+    }
+}
+
+mod objects {
+    use std::{borrow::Cow, ffi::CStr};
+
+    pub struct JObject;
+    impl crate::refs::Reference for JObject {
+        fn class_name() -> Cow<'static, CStr> {
+            Cow::Borrowed(c"java/lang/Object")
+        }
+        fn as_raw(&self) -> jni::sys::jobject {
+            core::ptr::null_mut()
+        }
     }
 }
 
@@ -1038,12 +1091,10 @@ jgen_bind_method!(
     sig: (a: java.lang.String, c: jint) -> void
 );
 
-/*
 jgen_bind_method!(
     this: JFoo,
     javaFunction as rust_function,
     sig: (a: &JString, b: java.lang.String as JString, c: jint) -> void
 );
-*/
 
 fn main() {}
