@@ -61,49 +61,25 @@ macro_rules! jprim {
     (jboolean) => {
         "Z"
     };
-    (boolean) => {
-        "Z"
-    };
     (jbyte) => {
-        "B"
-    };
-    (byte) => {
         "B"
     };
     (jchar) => {
         "C"
     };
-    (char) => {
-        "C"
-    };
     (jshort) => {
-        "S"
-    };
-    (short) => {
         "S"
     };
     (jint) => {
         "I"
     };
-    (int) => {
-        "I"
-    };
     (jlong) => {
-        "J"
-    };
-    (long) => {
         "J"
     };
     (jfloat) => {
         "F"
     };
-    (float) => {
-        "F"
-    };
     (jdouble) => {
-        "D"
-    };
-    (double) => {
         "D"
     };
 }
@@ -126,91 +102,97 @@ macro_rules! jname_internal {
     };
 }
 
-// ---------- Type → internal descriptor (literals only: prim + Java) ----------
-macro_rules! jdesc {
-    ( [ $($inner:tt)+ ] ) => { concat!("[", jdesc!($($inner)+)) };
-
-    // Java (named)
-    ( $first:ident . $($rest:tt)+ ) => {
-        concat!("L", jname_internal!($first . $($rest)+), ";")
-    };
-    // Java (default package)
-    ( . $outer:ident $( :: $inner:ident )* ) => {
-        concat!("L", jname_internal!(. $outer $( :: $inner )*), ";")
-    };
-
-    // primitives
-    (void)=>{ jprim!(void) };
-    (jboolean)=>{ jprim!(jboolean) }; (boolean)=>{ jprim!(boolean) };
-    (jbyte)=>{ jprim!(jbyte) };       (byte)=>{ jprim!(byte) };
-    (jchar)=>{ jprim!(jchar) };       (char)=>{ jprim!(char) };
-    (jshort)=>{ jprim!(jshort) };     (short)=>{ jprim!(short) };
-    (jint)=>{ jprim!(jint) };         (int)=>{ jprim!(int) };
-    (jlong)=>{ jprim!(jlong) };       (long)=>{ jprim!(long) };
-    (jfloat)=>{ jprim!(jfloat) };     (float)=>{ jprim!(float) };
-    (jdouble)=>{ jprim!(jdouble) };   (double)=>{ jprim!(double) };
+// ---------- Type → internal descriptor (normalized only) ----------
+// Helpers to render Java names and arrays.
+macro_rules! jdesc_java_name {
+    ( $first:ident . $($rest:tt)+ ) => { concat!("L", jname_internal!($first . $($rest)+), ";") };
+    ( . $outer:ident $( :: $inner:ident )* ) => { concat!("L", jname_internal!(. $outer $( :: $inner )*), ";") };
 }
 
-// ---------- Rust-side descriptor (runtime, uses Reference::class_name) ----------
-macro_rules! rust_jdesc {
-    // single reference: &JString
-    ( $rust:ty ) => {
-        format!("L{};", <$rust as $crate::refs::Reference>::class_name())
+macro_rules! jdesc_java_elem {
+    // Java reference element
+    ( $first:ident . $($rest:tt)+ ) => { jdesc_java_name!($first . $($rest)+) };
+    ( . $outer:ident $( :: $inner:ident )* ) => { jdesc_java_name!(. $outer $( :: $inner )*) };
+    // Primitive element (canonical)
+    ( jboolean ) => { jprim!(jboolean) };
+    ( jbyte    ) => { jprim!(jbyte)    };
+    ( jchar    ) => { jprim!(jchar)    };
+    ( jshort   ) => { jprim!(jshort)   };
+    ( jint     ) => { jprim!(jint)     };
+    ( jlong    ) => { jprim!(jlong)    };
+    ( jfloat   ) => { jprim!(jfloat)   };
+    ( jdouble  ) => { jprim!(jdouble)  };
+    // Primitive aliases
+    ( boolean  ) => { jprim!(jboolean) };
+    ( byte     ) => { jprim!(jbyte)    };
+    ( char     ) => { jprim!(jchar)    };
+    ( short    ) => { jprim!(jshort)   };
+    ( int      ) => { jprim!(jint)     };
+    ( long     ) => { jprim!(jlong)    };
+    ( float    ) => { jprim!(jfloat)   };
+    ( double   ) => { jprim!(jdouble)  };
+}
+
+macro_rules! jdesc_java_array {
+    ( [ [ $($inner:tt)+ ] ] ) => { concat!("[", jdesc_java_array!([ $($inner)+ ]) ) };
+    ( [ $($inner:tt)+ ] ) => { concat!("[", jdesc_java_elem!( $($inner)+ )) };
+}
+
+// Normalized-only jdesc
+macro_rules! jdesc {
+    // prim(...)
+    ( prim ( $p:ident ) ) => { jprim!($p) };
+
+    // obj(...), including array element syntax: obj([ ... ])
+    ( obj ( [ $($inner:tt)+ ] ) as rust ( $as_ty:ty ) ) => { jdesc_java_array!([ $($inner)+ ]) };
+    ( obj ( $first:ident . $($rest:tt)+ ) as rust ( $as_ty:ty ) ) => { jdesc_java_name!($first . $($rest)+) };
+    ( obj ( . $outer:ident $( :: $inner:ident )* ) as rust ( $as_ty:ty ) ) => { jdesc_java_name!(. $outer $( :: $inner )*) };
+
+    // rust(...) is only used in formatted signatures
+    ( rust ( $($r:tt)+ ) ) => { "{}" };
+}
+
+// Helper: normalize a raw type and emit its descriptor with jdesc
+macro_rules! jdesc_of_emit {
+    ( $($norm:tt)+ ) => { jdesc!( $($norm)+ ) };
+}
+macro_rules! jdesc_of {
+    ( $($raw:tt)+ ) => {
+        jnorm_type_then!( jdesc_of_emit, ( $($raw)+ ) )
     };
 }
 
 // ---------- NORMALIZATION ----------
 
-macro_rules! rust_array_wrapper_ty {
-    // Strip leading reference
-    ( & [ $($inner:tt)+ ] ) => { rust_array_wrapper_ty!( [ $($inner)+ ] ) };
-
-    // ----- multi-dimensional primitive arrays: reject -----
-    ( [ [ jboolean ] ] ) => { compile_error!("Multi-dimensional primitive arrays are not supported (found [[jboolean]])"); };
-    ( [ [ boolean ] ] )  => { compile_error!("Multi-dimensional primitive arrays are not supported (found [[boolean]])"); };
-    ( [ [ jbyte ] ] )    => { compile_error!("Multi-dimensional primitive arrays are not supported (found [[jbyte]])"); };
-    ( [ [ byte ] ] )     => { compile_error!("Multi-dimensional primitive arrays are not supported (found [[byte]])"); };
-    ( [ [ jchar ] ] )    => { compile_error!("Multi-dimensional primitive arrays are not supported (found [[jchar]])"); };
-    ( [ [ char ] ] )     => { compile_error!("Multi-dimensional primitive arrays are not supported (found [[char]])"); };
-    ( [ [ jshort ] ] )   => { compile_error!("Multi-dimensional primitive arrays are not supported (found [[jshort]])"); };
-    ( [ [ short ] ] )    => { compile_error!("Multi-dimensional primitive arrays are not supported (found [[short]])"); };
-    ( [ [ jint ] ] )     => { compile_error!("Multi-dimensional primitive arrays are not supported (found [[jint]])"); };
-    ( [ [ int ] ] )      => { compile_error!("Multi-dimensional primitive arrays are not supported (found [[int]])"); };
-    ( [ [ jlong ] ] )    => { compile_error!("Multi-dimensional primitive arrays are not supported (found [[jlong]])"); };
-    ( [ [ long ] ] )     => { compile_error!("Multi-dimensional primitive arrays are not supported (found [[long]])"); };
-    ( [ [ jfloat ] ] )   => { compile_error!("Multi-dimensional primitive arrays are not supported (found [[jfloat]])"); };
-    ( [ [ float ] ] )    => { compile_error!("Multi-dimensional primitive arrays are not supported (found [[float]])"); };
-    ( [ [ jdouble ] ] )  => { compile_error!("Multi-dimensional primitive arrays are not supported (found [[jdouble]])"); };
-    ( [ [ double ] ] )   => { compile_error!("Multi-dimensional primitive arrays are not supported (found [[double]])"); };
-
-    // ----- single-dimension primitive arrays -----
-    ( [ jboolean ] ) => { JPrimitiveArray<jboolean> };
-    ( [ boolean ] )  => { JPrimitiveArray<jboolean> };
-    ( [ jbyte ] )    => { JPrimitiveArray<jbyte> };
-    ( [ byte ] )     => { JPrimitiveArray<jbyte> };
-    ( [ jchar ] )    => { JPrimitiveArray<jchar> };
-    ( [ char ] )     => { JPrimitiveArray<jchar> };
-    ( [ jshort ] )   => { JPrimitiveArray<jshort> };
-    ( [ short ] )    => { JPrimitiveArray<jshort> };
-    ( [ jint ] )     => { JPrimitiveArray<jint> };
-    ( [ int ] )      => { JPrimitiveArray<jint> };
-    ( [ jlong ] )    => { JPrimitiveArray<jlong> };
-    ( [ long ] )     => { JPrimitiveArray<jlong> };
-    ( [ jfloat ] )   => { JPrimitiveArray<jfloat> };
-    ( [ float ] )    => { JPrimitiveArray<jfloat> };
-    ( [ jdouble ] )  => { JPrimitiveArray<jdouble> };
-    ( [ double ] )   => { JPrimitiveArray<jdouble> };
-
-    // ----- object arrays (arbitrary depth) -----
+// Build the default Rust wrapper type for a Java array of arbitrary dimension.
+// Base cases map a 1D array; recursion wraps further dimensions in JObjectArray<...>.
+macro_rules! rust_type_for_java_array_default {
+    // recursion: more dimensions
     ( [ [ $($inner:tt)+ ] ] ) => {
-        JObjectArray< rust_array_wrapper_ty!( [ $($inner)+ ] ) >
+        JObjectArray< rust_type_for_java_array_default!( [ $($inner)+ ] ) >
     };
 
-    // Optional: allow element references (e.g., &[&JString]) by stripping '&'
-    ( [ & $ty:path ] ) => { JObjectArray<$ty> };
+    // base: 1D primitive arrays
+    ( [ jboolean ] ) => { JPrimitiveArray<jboolean> };
+    ( [ jbyte    ] ) => { JPrimitiveArray<jbyte>    };
+    ( [ jchar    ] ) => { JPrimitiveArray<jchar>    };
+    ( [ jshort   ] ) => { JPrimitiveArray<jshort>   };
+    ( [ jint     ] ) => { JPrimitiveArray<jint>     };
+    ( [ jlong    ] ) => { JPrimitiveArray<jlong>    };
+    ( [ jfloat   ] ) => { JPrimitiveArray<jfloat>   };
+    ( [ jdouble  ] ) => { JPrimitiveArray<jdouble>  };
+    ( [ boolean  ] ) => { JPrimitiveArray<jboolean> };
+    ( [ byte     ] ) => { JPrimitiveArray<jbyte>    };
+    ( [ char     ] ) => { JPrimitiveArray<jchar>    };
+    ( [ short    ] ) => { JPrimitiveArray<jshort>   };
+    ( [ int      ] ) => { JPrimitiveArray<jint>     };
+    ( [ long     ] ) => { JPrimitiveArray<jlong>    };
+    ( [ float    ] ) => { JPrimitiveArray<jfloat>   };
+    ( [ double   ] ) => { JPrimitiveArray<jdouble>  };
 
-    // Base case: single-dimension object array
-    ( [ $ty:path ] ) => { JObjectArray<$ty> };
+    // base: 1D object arrays (named package or default package)
+    ( [ $first:ident . $($rest:tt)+ ] ) => { JObjectArray<JObject> };
+    ( [ . $outer:ident $( :: $inner:ident )* ] ) => { JObjectArray<JObject> };
 }
 
 // Normalize one raw type and immediately invoke a callback macro with the normalized form.
@@ -227,8 +209,8 @@ macro_rules! rust_array_wrapper_ty {
 //   - jint -> prim(jint)
 //   - int  -> prim(jint)
 //   - java.lang.String -> obj(java.lang.String) as rust(JObject)
-//   - [java.lang.String] -> obj([java.lang.String]) as rust(JObject)
-//   - java.lang.String[] -> obj([java.lang.String]) as rust(JObject)
+//   - [java.lang.String] -> obj([java.lang.String]) as rust(JObjectArray<JObject>)
+//   - java.lang.String[] -> obj([java.lang.String]) as rust(JObjectArray<JObject>)
 //   - .NoPackage -> obj(NoPackage) as rust(JObject)
 //   - .NoPackage as JString -> obj(NoPackage) as rust(JString)
 //   - java.lang.String as JString -> obj(java.lang.String) as rust(JString)
@@ -236,94 +218,125 @@ macro_rules! rust_array_wrapper_ty {
 //   - &[JString] -> rust(JObjectArray<JString>)
 //   - &[[JString]] -> rust(JObjectArray<JObjectArray<JString>>)
 //   - &[jint] -> rust(JPrimitiveArray<jint>)
+// ...existing code...
 macro_rules! jnorm_type_then {
     // ----- Rust reference arrays -----
-    // 2D+ object arrays: &[[T]] → rust(JObjectArray<JObjectArray<T>>)
-    ( $cb:ident, ( & [ [ $($inner:tt)+ ] ] ) $(, $($pass:tt)* )? ) => {
+    ( $cb:tt, ( & [ [ $($inner:tt)+ ] ] ) $(, $($pass:tt)* )? ) => {
         jnorm_type_then!(@objarr $cb, () (), [ [ $($inner)+ ] ] $(, $($pass)* )? )
     };
-    // 1D object arrays: &[T] → rust(JObjectArray<T>)
-    ( $cb:ident, ( & [ $ty:path ] ) $(, $($pass:tt)* )? ) => {
+    ( $cb:tt, ( & [ $ty:path ] ) $(, $($pass:tt)* )? ) => {
         $cb!( rust( JObjectArray<$ty> ) $(, $($pass)* )? )
     };
-    // Allow element references (e.g., &[&JString]) by stripping '&'
-    ( $cb:ident, ( & [ & $ty:path ] ) $(, $($pass:tt)* )? ) => {
+    ( $cb:tt, ( & [ & $ty:path ] ) $(, $($pass:tt)* )? ) => {
         $cb!( rust( JObjectArray<$ty> ) $(, $($pass)* )? )
     };
-    // 1D primitive arrays: &[int] → rust(JPrimitiveArray<jint>)
-    ( $cb:ident, ( & [ jboolean ] ) $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jboolean> ) $(, $($pass)* )? ) };
-    ( $cb:ident, ( & [ boolean ] )  $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jboolean> ) $(, $($pass)* )? ) };
-    ( $cb:ident, ( & [ jbyte ] )    $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jbyte> )    $(, $($pass)* )? ) };
-    ( $cb:ident, ( & [ byte ] )     $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jbyte> )    $(, $($pass)* )? ) };
-    ( $cb:ident, ( & [ jchar ] )    $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jchar> )    $(, $($pass)* )? ) };
-    ( $cb:ident, ( & [ char ] )     $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jchar> )    $(, $($pass)* )? ) };
-    ( $cb:ident, ( & [ jshort ] )   $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jshort> )   $(, $($pass)* )? ) };
-    ( $cb:ident, ( & [ short ] )    $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jshort> )   $(, $($pass)* )? ) };
-    ( $cb:ident, ( & [ jint ] )     $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jint> )     $(, $($pass)* )? ) };
-    ( $cb:ident, ( & [ int ] )      $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jint> )     $(, $($pass)* )? ) };
-    ( $cb:ident, ( & [ jlong ] )    $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jlong> )    $(, $($pass)* )? ) };
-    ( $cb:ident, ( & [ long ] )     $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jlong> )    $(, $($pass)* )? ) };
-    ( $cb:ident, ( & [ jfloat ] )   $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jfloat> )   $(, $($pass)* )? ) };
-    ( $cb:ident, ( & [ float ] )    $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jfloat> )   $(, $($pass)* )? ) };
-    ( $cb:ident, ( & [ jdouble ] )  $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jdouble> )  $(, $($pass)* )? ) };
-    ( $cb:ident, ( & [ double ] )   $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jdouble> )  $(, $($pass)* )? ) };
-    // Reject multi-dimensional primitive arrays (e.g., &[[int]])
-    ( @objarr $cb:ident, ( $($open:tt)* ) ( $($close:tt)* ), [ $p:ident ] $(, $($pass:tt)* )? ) => {
+    // & [primitive]
+    ( $cb:tt, ( & [ jboolean ] ) $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jboolean> ) $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ boolean ] )  $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jboolean> ) $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ jbyte ] )    $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jbyte> )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ byte ] )     $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jbyte> )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ jchar ] )    $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jchar> )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ char ] )     $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jchar> )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ jshort ] )   $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jshort> )   $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ short ] )    $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jshort> )   $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ jint ] )     $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jint> )     $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ int ] )      $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jint> )     $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ jlong ] )    $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jlong> )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ long ] )     $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jlong> )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ jfloat ] )   $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jfloat> )   $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ float ] )    $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jfloat> )   $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ jdouble ] )  $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jdouble> )  $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ double ] )   $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jdouble> )  $(, $($pass)* )? ) };
+
+    // Reject multi-dimensional primitive arrays by the &-array path only
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ $p:ident ] $(, $($pass:tt)* )? ) => {
         compile_error!("Multi-dimensional primitive arrays are not supported")
     };
-    // Build nested object array type: accumulate generics: (open...) (close...)
-    ( @objarr $cb:ident, ( $($open:tt)* ) ( $($close:tt)* ), [ [ $($inner:tt)+ ] ] $(, $($pass:tt)* )? ) => {
+    // Object array recursion for &[[...]]
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ [ $($inner:tt)+ ] ] $(, $($pass:tt)* )? ) => {
         jnorm_type_then!(@objarr $cb, ( $($open)* JObjectArray< ) ( > $($close)* ), [ $($inner)+ ] $(, $($pass)* )? )
     };
-    ( @objarr $cb:ident, ( $($open:tt)* ) ( $($close:tt)* ), [ $ty:path ] $(, $($pass:tt)* )? ) => {
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ $ty:path ] $(, $($pass:tt)* )? ) => {
         $cb!( rust( $($open)* $ty $($close)* ) $(, $($pass)* )? )
     };
-    ( @objarr $cb:ident, ( $($open:tt)* ) ( $($close:tt)* ), [ & $ty:path ] $(, $($pass:tt)* )? ) => {
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ & $ty:path ] $(, $($pass:tt)* )? ) => {
         $cb!( rust( $($open)* $ty $($close)* ) $(, $($pass)* )? )
+    };
+
+    // ----- Java-style arrays (non-Rust), N-dimensional -----
+
+    // Bracket form with explicit `as` (any dimension)
+    ( $cb:tt, ( [ $($arr:tt)+ ] as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
+        $cb!( obj( [ $($arr)+ ] ) as rust( $as_ty ) $(, $($pass)* )? )
+    };
+    // Bracket form without `as` (any dimension) → compute default Rust wrapper type
+    ( $cb:tt, ( [ $($arr:tt)+ ] ) $(, $($pass:tt)* )? ) => {
+        $cb!( obj( [ $($arr)+ ] ) as rust( rust_type_for_java_array_default!([ $($arr)+ ]) ) $(, $($pass)* )? )
+    };
+
+    // Suffix form → rewrite to bracket form
+    ( $cb:tt, ( $first:ident . $($rest:tt)+ [ ] $($tail:tt)* ) $(, $($pass:tt)* )? ) => {
+        jnorm_type_then!(@suffix $cb, ( [ $first . $($rest)+ ] ), $($tail)* $(, $($pass)* )? )
+    };
+    ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* [ ] $($tail:tt)* ) $(, $($pass:tt)* )? ) => {
+        jnorm_type_then!(@suffix $cb, ( [ . $outer $( :: $inner )* ] ), $($tail)* $(, $($pass)* )? )
+    };
+    ( $cb:tt, ( $p:ident [ ] $($tail:tt)* ) $(, $($pass:tt)* )? ) => {
+        jnorm_type_then!(@suffix $cb, ( [ $p ] ), $($tail)* $(, $($pass)* )? )
+    };
+    // Internal suffix recursion
+    ( @suffix $cb:tt, ( [ $($acc:tt)+ ] ), [ ] $($tail:tt)* $(, $($pass:tt)* )? ) => {
+        jnorm_type_then!(@suffix $cb, ( [ [ $($acc)+ ] ] ), $($tail)* $(, $($pass)* )? )
+    };
+    ( @suffix $cb:tt, ( [ $($acc:tt)+ ] ), as $as_ty:ty $(, $($pass:tt)* )? ) => {
+        $cb!( obj( [ $($acc)+ ] ) as rust( $as_ty ) $(, $($pass)* )? )
+    };
+    ( @suffix $cb:tt, ( [ $($acc:tt)+ ] ), $(, $($pass:tt)* )? ) => {
+        $cb!( obj( [ $($acc)+ ] ) as rust( rust_type_for_java_array_default!([ $($acc)+ ]) ) $(, $($pass)* )? )
     };
 
     // ----- Simple Rust ref: &Path -----
-    ( $cb:ident, ( & $rust:ty ) $(, $($pass:tt)* )? ) => { $cb!( rust( $rust ) $(, $($pass)* )? ) };
+    ( $cb:tt, ( & $rust:ty ) $(, $($pass:tt)* )? ) => { $cb!( rust( $rust ) $(, $($pass)* )? ) };
 
     // ----- Java object type (named package) -----
-    ( $cb:ident, ( $first:ident . $($rest:tt)+ as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
+    ( $cb:tt, ( $first:ident . $($rest:tt)+ as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
         $cb!( obj( $first . $($rest)+ ) as rust( $as_ty ) $(, $($pass)* )? )
     };
-    ( $cb:ident, ( $first:ident . $($rest:tt)+ ) $(, $($pass:tt)* )? ) => {
+    ( $cb:tt, ( $first:ident . $($rest:tt)+ ) $(, $($pass:tt)* )? ) => {
         $cb!( obj( $first . $($rest)+ ) as rust( JObject ) $(, $($pass)* )? )
     };
 
     // ----- Java object type (default package) -----
-    ( $cb:ident, ( . $outer:ident $( :: $inner:ident )* as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
-        $cb!( obj( $outer $( :: $inner )* ) as rust( $as_ty ) $(, $($pass)* )? )
+    ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
+        $cb!( obj( . $outer $( :: $inner )* ) as rust( $as_ty ) $(, $($pass)* )? )
     };
-    ( $cb:ident, ( . $outer:ident $( :: $inner:ident )* ) $(, $($pass:tt)* )? ) => {
-        $cb!( obj( $outer $( :: $inner )* ) as rust( JObject ) $(, $($pass)* )? )
+    ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* ) $(, $($pass:tt)* )? ) => {
+        $cb!( obj( . $outer $( :: $inner )* ) as rust( JObject ) $(, $($pass)* )? )
     };
 
     // ----- Primitives (canonicalize) -----
-    ( $cb:ident, ( void )     $(, $($pass:tt)* )? ) => { $cb!( prim( void )     $(, $($pass)* )? ) };
-    ( $cb:ident, ( jboolean ) $(, $($pass:tt)* )? ) => { $cb!( prim( jboolean ) $(, $($pass)* )? ) };
-    ( $cb:ident, ( boolean )  $(, $($pass:tt)* )? ) => { $cb!( prim( jboolean ) $(, $($pass)* )? ) };
-    ( $cb:ident, ( jbyte )    $(, $($pass:tt)* )? ) => { $cb!( prim( jbyte )    $(, $($pass)* )? ) };
-    ( $cb:ident, ( byte )     $(, $($pass:tt)* )? ) => { $cb!( prim( jbyte )    $(, $($pass)* )? ) };
-    ( $cb:ident, ( jchar )    $(, $($pass:tt)* )? ) => { $cb!( prim( jchar )    $(, $($pass)* )? ) };
-    ( $cb:ident, ( char )     $(, $($pass:tt)* )? ) => { $cb!( prim( jchar )    $(, $($pass)* )? ) };
-    ( $cb:ident, ( jshort )   $(, $($pass:tt)* )? ) => { $cb!( prim( jshort )   $(, $($pass)* )? ) };
-    ( $cb:ident, ( short )    $(, $($pass:tt)* )? ) => { $cb!( prim( jshort )   $(, $($pass)* )? ) };
-    ( $cb:ident, ( jint )     $(, $($pass:tt)* )? ) => { $cb!( prim( jint )     $(, $($pass)* )? ) };
-    ( $cb:ident, ( int )      $(, $($pass:tt)* )? ) => { $cb!( prim( jint )     $(, $($pass)* )? ) };
-    ( $cb:ident, ( jlong )    $(, $($pass:tt)* )? ) => { $cb!( prim( jlong )    $(, $($pass)* )? ) };
-    ( $cb:ident, ( long )     $(, $($pass:tt)* )? ) => { $cb!( prim( jlong )    $(, $($pass)* )? ) };
-    ( $cb:ident, ( jfloat )   $(, $($pass:tt)* )? ) => { $cb!( prim( jfloat )   $(, $($pass)* )? ) };
-    ( $cb:ident, ( float )    $(, $($pass:tt)* )? ) => { $cb!( prim( jfloat )   $(, $($pass)* )? ) };
-    ( $cb:ident, ( jdouble )  $(, $($pass:tt)* )? ) => { $cb!( prim( jdouble )  $(, $($pass)* )? ) };
-    ( $cb:ident, ( double )   $(, $($pass:tt)* )? ) => { $cb!( prim( jdouble )  $(, $($pass)* )? ) };
+    ( $cb:tt, ( void )     $(, $($pass:tt)* )? ) => { $cb!( prim( void )     $(, $($pass)* )? ) };
+    ( $cb:tt, ( jboolean ) $(, $($pass:tt)* )? ) => { $cb!( prim( jboolean ) $(, $($pass)* )? ) };
+    ( $cb:tt, ( boolean )  $(, $($pass:tt)* )? ) => { $cb!( prim( jboolean ) $(, $($pass)* )? ) };
+    ( $cb:tt, ( jbyte )    $(, $($pass:tt)* )? ) => { $cb!( prim( jbyte )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( byte )     $(, $($pass:tt)* )? ) => { $cb!( prim( jbyte )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( jchar )    $(, $($pass:tt)* )? ) => { $cb!( prim( jchar )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( char )     $(, $($pass:tt)* )? ) => { $cb!( prim( jchar )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( jshort )   $(, $($pass:tt)* )? ) => { $cb!( prim( jshort )   $(, $($pass)* )? ) };
+    ( $cb:tt, ( short )    $(, $($pass:tt)* )? ) => { $cb!( prim( jshort )   $(, $($pass)* )? ) };
+    ( $cb:tt, ( jint )     $(, $($pass:tt)* )? ) => { $cb!( prim( jint )     $(, $($pass)* )? ) };
+    ( $cb:tt, ( int )      $(, $($pass:tt)* )? ) => { $cb!( prim( jint )     $(, $($pass)* )? ) };
+    ( $cb:tt, ( jlong )    $(, $($pass:tt)* )? ) => { $cb!( prim( jlong )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( long )     $(, $($pass:tt)* )? ) => { $cb!( prim( jlong )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( jfloat )   $(, $($pass:tt)* )? ) => { $cb!( prim( jfloat )   $(, $($pass)* )? ) };
+    ( $cb:tt, ( float )    $(, $($pass:tt)* )? ) => { $cb!( prim( jfloat )   $(, $($pass)* )? ) };
+    ( $cb:tt, ( jdouble )  $(, $($pass:tt)* )? ) => { $cb!( prim( jdouble )  $(, $($pass)* )? ) };
+    ( $cb:tt, ( double )   $(, $($pass:tt)* )? ) => { $cb!( prim( jdouble )  $(, $($pass)* )? ) };
 
     // ----- Already-normalized (idempotent) -----
-    ( $cb:ident, ( prim ( $($p:tt)+ ) ) $(, $($pass:tt)* )? ) => { $cb!( prim( $($p)+ ) $(, $($pass)* )? ) };
-    ( $cb:ident, ( obj ( $($j:tt)+ ) as rust ( $as:ty ) ) $(, $($pass:tt)* )? ) => { $cb!( obj( $($j)+ ) as rust( $as ) $(, $($pass)* )? ) };
-    ( $cb:ident, ( rust ( $as:ty ) ) $(, $($pass:tt)* )? ) => { $cb!( rust( $as ) $(, $($pass)* )? ) };
+    ( $cb:tt, ( prim ( $($p:tt)+ ) ) $(, $($pass:tt)* )? ) => { $cb!( prim( $($p)+ ) $(, $($pass)* )? ) };
+    ( $cb:tt, ( obj ( $($j:tt)+ ) as rust ( $as:ty ) ) $(, $($pass:tt)* )? ) => { $cb!( obj( $($j)+ ) as rust( $as ) $(, $($pass)* )? ) };
+    ( $cb:tt, ( rust ( $as:ty ) ) $(, $($pass:tt)* )? ) => { $cb!( rust( $as ) $(, $($pass)* )? ) };
 }
 
 // Rework jnorm_ret_then to use jnorm_type_then (variadic; forwards extra tokens)
@@ -459,15 +472,6 @@ macro_rules! any_rust {
     }};
 }
 
-macro_rules! _arg_desc_lit     { ( prim ( $p:ident ) ) => { jdesc!($p) };
-                                 ( obj  ( $($j:tt)+ ) as rust ( $as:ty ) ) => { jdesc!($($j)+) }; }
-macro_rules! _arg_desc_fmt_piece{ ( prim ( $p:ident ) ) => { jdesc!($p) };
-                                 ( obj  ( $($j:tt)+ ) as rust ( $as:ty ) ) => { jdesc!($($j)+) };
-                                 ( rust ( $($r:tt)+ ) ) => { "{}" }; }
-macro_rules! _arg_desc_fmt_vals { ( prim ( $p:ident ) ) => {};
-                                 ( obj  ( $($j:tt)+ ) as rust ( $as:ty ) ) => {};
-                                 ( rust ( $($r:tt)+ ) ) => { , rust_jdesc!($($r)+) }; }
-
 macro_rules! ret_desc_lit       {
     ( prim ( $p:ident ) ) => { jdesc!($p) };
     ( obj  ( $($j:tt)+ ) as rust ( $as:ty ) ) => { jdesc!($($j)+) };
@@ -514,7 +518,17 @@ macro_rules! _ret_ty_from_norm {
     };
 }
 
-// Build signature (literal vs format)
+// Build signature (literal vs format) for NORMALIZED args/ret.
+macro_rules! _desc_piece {
+    ( $k:ident ( $($t:tt)* ) $( as rust ( $($as:tt)+ ) )? ) => {
+        jdesc!( $k ( $($t)* ) $( as rust ( $($as)+ ) )? )
+    };
+}
+macro_rules! _desc_val {
+    ( prim ( $($t:tt)* ) ) => {};
+    ( obj  ( $($j:tt)+ ) as rust ( $as:ty ) ) => {};
+    ( rust ( $as:ty ) ) => { , rust_jdesc!($as) };
+}
 
 macro_rules! build_sig_literal {
     ( ( $( $n:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* )
@@ -522,9 +536,9 @@ macro_rules! build_sig_literal {
     ) => {
         concat!(
             "(",
-            $( _arg_desc_lit!( $ak($($at)*) $( as rust ( $($aas)+ ) )? ) ),*,
+            $( _desc_piece!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ) ),*,
             ")",
-            ret_desc_lit!( $rk($($rt)*) $( as rust ( $($ret_as)+ ) )? )
+            _desc_piece!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? )
         )
     };
 }
@@ -535,12 +549,12 @@ macro_rules! build_sig_format {
         format!(
             concat!(
                 "(",
-                $( _arg_desc_fmt_piece!( $ak($($at)*) $( as rust ( $($aas)+ ) )? ) ),*,
+                $( _desc_piece!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ) ),*,
                 ")",
-                ret_desc_fmt_piece!( $rk($($rt)*) $( as rust ( $($ret_as)+ ) )? )
+                _desc_piece!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? )
             )
-            $( _arg_desc_fmt_vals!( $ak($($at)*) $( as rust ( $($aas)+ ) )? ) )*
-            ret_desc_fmt_val!( $rk($($rt)*) $( as rust ( $($ret_as)+ ) )? )
+            $( _desc_val!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ) )*
+            _desc_val!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? )
         )
     };
 }
@@ -693,30 +707,25 @@ macro_rules! unwrap_parens {
 }
 
 // ----- LOOKUP FN -----
-macro_rules! jgen_method_call_fn {
+macro_rules! jgen_method_lookup_fn {
     (
         $this:path,
+        $jname:ident,
         $rname:ident,
         ( $($args:tt)* ),
         ( $($ret:tt)+ )
     ) => {
         paste! {
-            fn [<_ $rname _call>](
-                env: &mut Env,
-                this: &$this,
-                method_id: JMethodID,
-                jnorm_args_then!(param_list_from_args, ( $($args)* ))
-            ) -> Result< jnorm_ret_then!(_ret_ty_from_norm, ( $($ret)+ )) > {
-                let jni_args = jnorm_args_then!(build_jni_args_array, ( $($args)* ));
+            fn [<_ $rname _lookup>](env: &mut Env) -> Result<JMethodID> {
+                let class: &JClass = $this::lookup_class()?;
 
-                let _ = &this;
-                jni_call_check_ex!(
-                    this, v1_1,
-                    jnorm_ret_then!(_call_api_for_ret, ( $($ret)+ )),
-                    obj,
-                    method_id,
-                    &jni_args
-                )
+                let sig = if any_rust!( ( $($args)* ), ( $($ret)+ ) ) == 0 {
+                    build_sig_literal!( ( $($args)* ) -> ( $($ret)+ ) )
+                } else {
+                    build_sig_format!( ( $($args)* ) -> ( $($ret)+ ) )
+                };
+
+                env.get_method_id(class, stringify!($jname), &sig)
             }
         }
     };
@@ -810,7 +819,7 @@ macro_rules! jgen_bind_method {
 // ------------------
 
 // ----------- Minimal placeholders so this compiles in isolation -----------
-use std::{borrow::Cow, fmt};
+use std::{borrow::Cow, ffi::CStr, fmt};
 
 type Result<T> = core::result::Result<T, ()>;
 type JMethodID = ();
@@ -845,13 +854,13 @@ impl fmt::Display for JNIStr {
 }
 
 trait Reference {
-    fn class_name() -> Cow<'static, JNIStr>;
+    fn class_name() -> Cow<'static, CStr>;
     fn as_raw(&self) -> jni::sys::jobject;
 }
 
 impl Reference for JString {
-    fn class_name() -> Cow<'static, JNIStr> {
-        Cow::Owned(JNIStr)
+    fn class_name() -> Cow<'static, CStr> {
+        Cow::Borrowed(c"java/lang/String")
     }
     fn as_raw(&self) -> jni::sys::jobject {
         core::ptr::null_mut()
@@ -872,21 +881,40 @@ macro_rules! jni_call_check_ex {
     }};
 }
 
+const _: &str = jdesc!(prim(jint)); // "I"
+const _: &str = jdesc!(prim(void)); // "V"
+
+// 2) Objects and arrays (normalized)
+const _: &str = jdesc!(obj(java.lang.String) as rust(JObject)); // "Ljava/lang/String;"
+const _: &str = jdesc!(obj([java.lang.String]) as rust(JObjectArray<JObject>)); // "[Ljava/lang/String;"
+const _: &str = jdesc!(obj([[java.lang.String]]) as rust(JObjectArray<JString>)); // "[Ljava/lang/String;"
+
+const _: &str = jdesc!(obj([[java.lang.String]]) as rust(JObjectArray<JObjectArray<JObject>>)); // "[[Ljava/lang/String;"
+
+const _: &str = jdesc!(obj(java.util.Map::Entry) as rust(JObject)); // "Ljava/util/Map$Entry;"
+const _: &str = jdesc!(obj([java.util.Map::Entry]) as rust(JObjectArray<JObject>)); // "[Ljava/util/Map$Entry;"
+const _: &str = jdesc!(obj(.Hello) as rust(JObject)); // "LHello;"
+const _: &str = jdesc!(obj([.Hello]) as rust(JObjectArray<JObject>)); // "[LHello;"
+const _: &str = jdesc!(obj([jchar]) as rust(JPrimitiveArray<jchar>)); // "[C"
+
 // 1) Primitives (with and without 'j')
-const _: &str = jdesc!(jint); // "I"
-const _: &str = jdesc!(int); // "I"
-const _: &str = jdesc!(void); // "V"
+const _: &str = jdesc_of!(jint); // "I"
+const _: &str = jdesc_of!(int); // "I"
+const _: &str = jdesc_of!(void); // "V"
 
 // 2) Objects and arrays (internal names)
-const _: &str = jdesc!(java.lang.String); // "Ljava/lang/String;"
-const _: &str = jdesc!([java.lang.String]); // "[Ljava/lang/String;"
-const _: &str = jdesc!([[java.lang.String]]); // "[[Ljava/lang/String;"
-const _: &str = jdesc!(java.util.Map::Entry); // "Ljava/util/Map$Entry;"
-const _: &str = jdesc!([java.util.Map::Entry]); // "[Ljava/util/Map$Entry;"
-const _: &str = jdesc!(.Hello); // "LHello;"
-const _: &str = jdesc!([.Hello]); // "[LHello;"
-const _: &str = jdesc!(char); // "C"
-const _: &str = jdesc!([char]); // "[C"
+const _: &str = jdesc_of!(java.lang.String); // "Ljava/lang/String;"
+const _: &str = jdesc_of!([java.lang.String]); // "[Ljava/lang/String;"
+const _: &str = jdesc_of!([[java.lang.String]]); // "[[Ljava/lang/String;"
+const _: &str = jdesc_of!(java.util.Map::Entry); // "Ljava/util/Map$Entry;"
+const _: &str = jdesc_of!([java.util.Map::Entry]); // "[Ljava/util/Map$Entry;"
+const _: &str = jdesc_of!(.Hello); // "LHello;"
+const _: &str = jdesc_of!([.Hello]); // "[LHello;"
+const _: &str = jdesc_of!(char); // "C"
+const _: &str = jdesc_of!([char]); // "[C"
+
+const _: &str = jdesc_of!(java.lang.String); // "Ljava/lang/String;"
+const _: &str = jdesc_of!([[java.lang.String]]); // "[Ljava/lang/String;"
 
 // 3) Normalization
 // name: prim(jchar) as jchar
@@ -915,6 +943,7 @@ const _: () = {
 type jint = i32;
 
 // -------------------- Example --------------------
+/*
 jgen_bind_method!(
     this: JFoo,
     javaFunction as rust_function_a,
@@ -926,3 +955,6 @@ jgen_bind_method!(
     javaFunction as rust_function,
     sig: (a: &JString, b: java.lang.String as JString, c: jint) -> void
 );
+*/
+
+fn main() {}
