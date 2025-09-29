@@ -1399,6 +1399,19 @@ mod refs {
     pub(crate) use super::Reference;
 }
 trait Reference {
+    /// The fully qualified class name of the Java class represented by this
+    /// reference.
+    ///
+    /// The class name is expected to be dot-separated, in the same format as
+    /// `Class.getName()` and suitable for passing to `Class.forName()`
+    ///
+    /// For example: `"com.example.MyClass"`
+    ///
+    /// Note: this format is very similar to the FindClass naming conventions,
+    /// except for the use of dots instead of slashes.
+    ///
+    /// An array of objects would look like: "[Ljava.lang.Object;" An array of
+    /// integers would look like: "[I"
     fn class_name() -> Cow<'static, str>;
     fn as_raw(&self) -> jni::sys::jobject;
 }
@@ -1415,7 +1428,7 @@ mod objects {
     }
     impl crate::refs::Reference for JObject {
         fn class_name() -> Cow<'static, str> {
-            Cow::Borrowed("java/lang/Object")
+            Cow::Borrowed("java.lang.Object")
         }
         fn as_raw(&self) -> jni::sys::jobject {
             core::ptr::null_mut()
@@ -1436,7 +1449,7 @@ mod objects {
     }
     impl crate::refs::Reference for JClass {
         fn class_name() -> Cow<'static, str> {
-            Cow::Borrowed("java/lang/Class")
+            Cow::Borrowed("java.lang.Class")
         }
         fn as_raw(&self) -> jni::sys::jobject {
             core::ptr::null_mut()
@@ -1451,7 +1464,7 @@ mod objects {
     }
     impl crate::refs::Reference for JString {
         fn class_name() -> Cow<'static, str> {
-            Cow::Borrowed("java/lang/String")
+            Cow::Borrowed("java.lang.String")
         }
         fn as_raw(&self) -> jni::sys::jobject {
             core::ptr::null_mut()
@@ -1469,9 +1482,17 @@ mod objects {
             self
         }
     }
-    impl<T> crate::refs::Reference for JObjectArray<T> {
+    impl<T: crate::refs::Reference> crate::refs::Reference for JObjectArray<T> {
         fn class_name() -> Cow<'static, str> {
-            Cow::Borrowed("[Ljava/lang/Object;")
+            let inner = T::class_name();
+            let name = if inner.len() == 1 || inner.starts_with("[") {
+                // inner = primitive OR array
+                format!("[{inner}")
+            } else {
+                // inner = object
+                format!("[L{inner};")
+            };
+            Cow::Owned(name)
         }
         fn as_raw(&self) -> jni::sys::jobject {
             core::ptr::null_mut()
@@ -1626,7 +1647,11 @@ jgen_bind_method!(
 fn main() {
     /*
     TODO:
+    - Allow jvoid or () as aliases for void
+    - make sure we get a compiler error if void is used as a param type
     - Output only one literal or format signature without a runtime if statement.
+    - Mock compositional ::class_name() for JObjectArray so we can test composition of signatures with multi-dimensional arrays.
+    - Deal with mapping from binary names to internal names when using `Reference::class_name()`
      */
 
     // Test that primitive arrays now parse correctly
