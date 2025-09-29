@@ -163,6 +163,19 @@ macro_rules! jdesc_of {
     };
 }
 
+macro_rules! rust_jdesc {
+    // prim(...)
+    ( prim ( $p:ident ) ) => { jprim!($p) };
+
+    // obj(...), including array element syntax: obj([ ... ])
+    ( obj ( [ $($inner:tt)+ ] ) as rust ( $as_ty:ty ) ) => { jdesc_java_array!([ $($inner)+ ]) };
+    ( obj ( $first:ident . $($rest:tt)+ ) as rust ( $as_ty:ty ) ) => { jdesc_java_name!($first . $($rest)+) };
+    ( obj ( . $outer:ident $( :: $inner:ident )* ) as rust ( $as_ty:ty ) ) => { jdesc_java_name!(. $outer $( :: $inner )*) };
+
+    // rust(...) is only used in formatted signatures
+    ( rust ( $($r:tt)+ ) ) => { &<$($r)+ as $crate::refs::Reference>::class_name() };
+}
+
 // ---------- NORMALIZATION ----------
 
 // Build the default Rust wrapper type for a Java array of arbitrary dimension.
@@ -275,8 +288,8 @@ macro_rules! jnorm_type_then {
     };
 
     // Suffix form → rewrite to bracket form
-    ( $cb:tt, ( $first:ident . $($rest:tt)+ [ ] $($tail:tt)* ) $(, $($pass:tt)* )? ) => {
-        jnorm_type_then!{@suffix $cb, ( [ $first . $($rest)+ ] ), $($tail)* $(, $($pass)* )? }
+    ( $cb:tt, ( $first:ident $( . $seg:ident )+ $( :: $inner:ident )* [ ] $($tail:tt)* ) $(, $($pass:tt)* )? ) => {
+        jnorm_type_then!{@suffix $cb, ( [ $first $( . $seg )+ $( :: $inner )* ] ), $($tail)* $(, $($pass)* )? }
     };
     ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* [ ] $($tail:tt)* ) $(, $($pass:tt)* )? ) => {
         jnorm_type_then!{@suffix $cb, ( [ . $outer $( :: $inner )* ] ), $($tail)* $(, $($pass)* )? }
@@ -299,11 +312,11 @@ macro_rules! jnorm_type_then {
     ( $cb:tt, ( & $rust:ty ) $(, $($pass:tt)* )? ) => { $cb!{ ( rust( $rust ) ) $(, $($pass)* )? } };
 
     // ----- Java object type -----
-    ( $cb:tt, ( $first:ident . $($rest:tt)+ as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
-        $cb!{ ( obj( $first . $($rest)+ ) as rust( $as_ty ) ) $(, $($pass)* )? }
+    ( $cb:tt, ( $first:ident $( . $seg:ident )+ $( :: $inner:ident )* as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
+       $cb!{ ( obj( $first $( . $seg )+ $( :: $inner )* ) as rust( $as_ty ) ) $(, $($pass)* )? }
     };
-    ( $cb:tt, ( $first:ident . $($rest:tt)+ ) $(, $($pass:tt)* )? ) => {
-        $cb!{ ( obj( $first . $($rest)+ ) as rust( $crate::objects::JObject ) ) $(, $($pass)* )? }
+    ( $cb:tt, ( $first:ident $( . $seg:ident )+ $( :: $inner:ident )* ) $(, $($pass:tt)* )? ) => {
+      $cb!{ ( obj( $first $( . $seg )+ $( :: $inner )* ) as rust( $crate::objects::JObject ) ) $(, $($pass)* )? }
     };
 
     // ----- Java object type (default package) -----
@@ -562,7 +575,7 @@ macro_rules! _param_ty_from_norm {
         &$as_ty
     };
     ( rust ( $as_ty:ty ) ) => {
-        $as_ty
+        &$as_ty
     };
 }
 macro_rules! _ret_ty_from_norm {
@@ -581,16 +594,6 @@ macro_rules! _ret_ty_from_norm {
 }
 
 // Build signature (literal vs format) for NORMALIZED args/ret.
-macro_rules! _desc_piece {
-    ( $k:ident ( $($t:tt)* ) $( as rust ( $($as:tt)+ ) )? ) => {
-        jdesc!( $k ( $($t)* ) $( as rust ( $($as)+ ) )? )
-    };
-}
-macro_rules! _desc_val {
-    ( prim ( $($t:tt)* ) ) => {};
-    ( obj  ( $($j:tt)+ ) as rust ( $as:ty ) ) => {};
-    ( rust ( $as:ty ) ) => { , rust_jdesc!($as) };
-}
 
 macro_rules! build_sig_literal {
     ( ( $( $n:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* )
@@ -598,9 +601,10 @@ macro_rules! build_sig_literal {
     ) => {
         String::from(concat!(
             "(",
-            $( _desc_piece!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ) ),*,
+            $( jdesc!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ) ),*,
             ")",
-            _desc_piece!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? )
+            jdesc!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? ),
+            "\0"
         ))
     };
 }
@@ -611,9 +615,10 @@ macro_rules! build_sig_format {
         {
             let mut buf = String::new();
             buf.push_str("(");
-            $( buf.push_str(_desc_piece!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? )); )*
+            $( buf.push_str(rust_jdesc!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? )); )*
             buf.push_str(")");
-            buf.push_str(_desc_piece!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? ));
+            buf.push_str(rust_jdesc!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? ));
+            buf.push_str("\0");
             buf
         }
     };
@@ -981,13 +986,13 @@ mod refs {
     pub(crate) use super::Reference;
 }
 trait Reference {
-    fn class_name() -> Cow<'static, CStr>;
+    fn class_name() -> Cow<'static, str>;
     fn as_raw(&self) -> jni::sys::jobject;
 }
 
 impl Reference for JString {
-    fn class_name() -> Cow<'static, CStr> {
-        Cow::Borrowed(c"java/lang/String")
+    fn class_name() -> Cow<'static, str> {
+        Cow::Borrowed("java/lang/String")
     }
     fn as_raw(&self) -> jni::sys::jobject {
         core::ptr::null_mut()
@@ -995,12 +1000,12 @@ impl Reference for JString {
 }
 
 mod objects {
-    use std::{borrow::Cow, ffi::CStr};
+    use std::borrow::Cow;
 
     pub struct JObject;
     impl crate::refs::Reference for JObject {
-        fn class_name() -> Cow<'static, CStr> {
-            Cow::Borrowed(c"java/lang/Object")
+        fn class_name() -> Cow<'static, str> {
+            Cow::Borrowed("java/lang/Object")
         }
         fn as_raw(&self) -> jni::sys::jobject {
             core::ptr::null_mut()
