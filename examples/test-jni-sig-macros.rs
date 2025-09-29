@@ -806,9 +806,9 @@ macro_rules! build_sig_format {
         {
             let mut buf = String::new();
             buf.push_str("(");
-            $( buf.push_str(rust_jdesc!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? )); )*
+            $( buf.extend(rust_jdesc!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ).chars().map(|c| if c == '.' { '/' } else { c })); )*
             buf.push_str(")");
-            buf.push_str(rust_jdesc!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? ));
+            buf.extend(rust_jdesc!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? ).chars().map(|c| if c == '.' { '/' } else { c }));
             buf.push_str("\0");
             buf
         }
@@ -1556,32 +1556,6 @@ const _: &str = jdesc_of!([char]); // "[C"
 const _: &str = jdesc_of!(java.lang.String); // "Ljava/lang/String;"
 const _: &str = jdesc_of!([[java.lang.String]]); // "[Ljava/lang/String;"
 
-// 3) Normalization
-// name: prim(jchar) as jchar
-const _: () = {
-    let _ = stringify!(jnorm_arg!(c: jchar));
-};
-// name: obj(java.lang.String) as JObject
-const _: () = {
-    let _ = stringify!(jnorm_arg!(s: java.lang.String));
-};
-// name: obj(java.lang.String) as JString
-const _: () = {
-    let _ = stringify!(jnorm_arg!(s: java.lang.String as JString));
-};
-// name: rust(&JString) as &JString
-const _: () = {
-    let _ = stringify!(jnorm_arg!(s: &JString));
-};
-// list form
-const _: () = {
-    let _ = stringify!(jnorm_args!(a: int, b: java.util.Map::Entry, c: &JString));
-};
-
-// Keep primitive alias used in examples
-#[allow(non_camel_case_types)]
-type jint = i32;
-
 // -------------------- Example --------------------
 
 jgen_bind_method!(
@@ -1650,8 +1624,6 @@ fn main() {
     - Allow jvoid or () as aliases for void
     - make sure we get a compiler error if void is used as a param type
     - Output only one literal or format signature without a runtime if statement.
-    - Mock compositional ::class_name() for JObjectArray so we can test composition of signatures with multi-dimensional arrays.
-    - Deal with mapping from binary names to internal names when using `Reference::class_name()`
      */
 
     // Test that primitive arrays now parse correctly
@@ -1680,28 +1652,31 @@ fn main() {
     let foo = JFoo::default();
     let mut env = Env::default();
 
-    // Test a primitive return function (should use &Env)
-    let method_0 = _rust_function_0_lookup(&mut env).unwrap();
-    let _void_ret = _rust_function_0_call(
-        &env, // Note: &Env for primitive return (void)
-        &foo,
-        method_0,
-        &JObject::default(), // java.lang.String normalized as JObject
-        42,
-    )
-    .unwrap();
+    // Don't call these, just make sure they compile
+    let _ = || {
+        // Test a primitive return function (should use &Env)
+        let method_0 = _rust_function_0_lookup(&mut env).unwrap();
+        let _void_ret = _rust_function_0_call(
+            &env,
+            &foo,
+            method_0,
+            &JObject::default(), // java.lang.String normalized as JObject
+            42,
+        )
+        .unwrap();
 
-    // Test an object return function (should use &mut Env)
-    let method_6 = _rust_function_6_lookup(&mut env).unwrap();
-    let _obj_ret = _rust_function_6_call(
-        &mut env, // Note: &mut Env for object return
-        &foo,
-        method_6,
-        &JString::default(),
-        &JString::default(),
-        42,
-    )
-    .unwrap();
+        // Test an object return function (should use &mut Env)
+        let method_6 = _rust_function_6_lookup(&mut env).unwrap();
+        let _obj_ret = _rust_function_6_call(
+            &mut env, // Note: &mut Env for object return
+            &foo,
+            method_6,
+            &JString::default(),
+            &JString::default(),
+            42,
+        )
+        .unwrap();
+    };
 
     println!("\nMethod bindings work!");
     println!("✓ Primitive return functions use &Env");

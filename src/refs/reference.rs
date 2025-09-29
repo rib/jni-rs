@@ -245,6 +245,9 @@ impl<'a, 'any_local> LoaderContext<'a, 'any_local> {
             if !bytes.contains(&b'.') {
                 Cow::Borrowed(binary_name)
             } else {
+                let s = "test";
+                let mut buf = String::new();
+                buf.extend(s.chars().map(|c| if c == '.' { '/' } else { c }));
                 // Convert from dot-notation to slash-notation
                 let owned: Vec<u8> = bytes
                     .iter()
