@@ -164,16 +164,13 @@ macro_rules! jdesc_of {
 }
 
 macro_rules! rust_jdesc {
-    // prim(...)
-    ( prim ( $p:ident ) ) => { jprim!($p) };
-
-    // obj(...), including array element syntax: obj([ ... ])
-    ( obj ( [ $($inner:tt)+ ] ) as rust ( $as_ty:ty ) ) => { jdesc_java_array!([ $($inner)+ ]) };
-    ( obj ( $first:ident . $($rest:tt)+ ) as rust ( $as_ty:ty ) ) => { jdesc_java_name!($first . $($rest)+) };
-    ( obj ( . $outer:ident $( :: $inner:ident )* ) as rust ( $as_ty:ty ) ) => { jdesc_java_name!(. $outer $( :: $inner )*) };
-
     // rust(...) is only used in formatted signatures
     ( rust ( $($r:tt)+ ) ) => { &<$($r)+ as $crate::refs::Reference>::class_name() };
+
+    // prim | obj
+    ( $($raw:tt)+ ) => {
+        jdesc!( $($raw)+ )
+    };
 }
 
 // ---------- NORMALIZATION ----------
@@ -431,6 +428,118 @@ macro_rules! jnorm_args_then_munch {
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident : & $rust:ty , $($rest:tt)* ) => {
         jnorm_type_then!{ jnorm_args_then_push, ( & $rust ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)* }
     };
+
+    // ---- Java-style suffix arrays (with trailing comma) ----
+    // java.name[]... [optional more []] with explicit `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
+      $n:ident : $first:ident $( . $seg:ident )+ $( :: $inner:ident )* [ ] $( [ ] )* as $as_ty:ty , $($rest:tt)* ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( $first $( . $seg )+ $( :: $inner )* [ ] $( [ ] )* as $as_ty ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)*
+        }
+    };
+    // java.name[]... [optional more []] without `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
+      $n:ident : $first:ident $( . $seg:ident )+ $( :: $inner:ident )* [ ] $( [ ] )* , $($rest:tt)* ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( $first $( . $seg )+ $( :: $inner )* [ ] $( [ ] )* ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)*
+        }
+    };
+    // .Default::Inner[]... with explicit `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
+      $n:ident : . $outer:ident $( :: $inner:ident )* [ ] $( [ ] )* as $as_ty:ty , $($rest:tt)* ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( . $outer $( :: $inner )* [ ] $( [ ] )* as $as_ty ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)*
+        }
+    };
+    // .Default::Inner[]... without `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
+      $n:ident : . $outer:ident $( :: $inner:ident )* [ ] $( [ ] )* , $($rest:tt)* ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( . $outer $( :: $inner )* [ ] $( [ ] )* ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)*
+        }
+    };
+    // primitive[]... with explicit `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
+      $n:ident : $p:ident [ ] $( [ ] )* as $as_ty:ty , $($rest:tt)* ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( $p [ ] $( [ ] )* as $as_ty ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)*
+        }
+    };
+    // primitive[]... without `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
+      $n:ident : $p:ident [ ] $( [ ] )* , $($rest:tt)* ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( $p [ ] $( [ ] )* ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)*
+        }
+    };
+
+    // ---- Java-style suffix arrays (last element) ----
+    // java.name[]... with explicit `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
+      $n:ident : $first:ident $( . $seg:ident )+ $( :: $inner:ident )* [ ] $( [ ] )* as $as_ty:ty ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( $first $( . $seg )+ $( :: $inner )* [ ] $( [ ] )* as $as_ty ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
+        }
+    };
+    // java.name[]... without `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
+      $n:ident : $first:ident $( . $seg:ident )+ $( :: $inner:ident )* [ ] $( [ ] )* ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( $first $( . $seg )+ $( :: $inner )* [ ] $( [ ] )* ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
+        }
+    };
+    // .Default::Inner[]... with explicit `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
+      $n:ident : . $outer:ident $( :: $inner:ident )* [ ] $( [ ] )* as $as_ty:ty ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( . $outer $( :: $inner )* [ ] $( [ ] )* as $as_ty ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
+        }
+    };
+    // .Default::Inner[]... without `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
+      $n:ident : . $outer:ident $( :: $inner:ident )* [ ] $( [ ] )* ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( . $outer $( :: $inner )* [ ] $( [ ] )* ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
+        }
+    };
+    // primitive[]... with explicit `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
+      $n:ident : $p:ident [ ] $( [ ] )* as $as_ty:ty ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( $p [ ] $( [ ] )* as $as_ty ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
+        }
+    };
+    // primitive[]... without `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident : $p:ident [ ] $( [ ] )* ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( $p [ ] $( [ ] )* ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
+        }
+    };
+
     // java.name with as,
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
       $n:ident : $first:ident $( . $seg:ident )+ $( :: $inner:ident )* as $as_ty:ty , $($rest:tt)* ) => {
@@ -475,6 +584,62 @@ macro_rules! jnorm_args_then_munch {
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident : & $rust:ty ) => {
         jnorm_type_then!{ jnorm_args_then_push, ( & $rust ), $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n }
     };
+
+    // ---- Java-style suffix arrays (last element) ----
+    // java.name[]... with explicit `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
+      $n:ident : $first:ident $( . $seg:ident )+ $( :: $inner:ident )* [ ] $($more:tt)* as $as_ty:ty ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( $first $( . $seg )+ $( :: $inner )* [ ] $($more)* as $as_ty ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
+        }
+    };
+    // java.name[]... without `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
+      $n:ident : $first:ident $( . $seg:ident )+ $( :: $inner:ident )* [ ] $($more:tt)* ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( $first $( . $seg )+ $( :: $inner )* [ ] $($more)* ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
+        }
+    };
+    // .Default::Inner[]... with explicit `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
+      $n:ident : . $outer:ident $( :: $inner:ident )* [ ] $($more:tt)* as $as_ty:ty ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( . $outer $( :: $inner )* [ ] $($more)* as $as_ty ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
+        }
+    };
+    // .Default::Inner[]... without `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
+      $n:ident : . $outer:ident $( :: $inner:ident )* [ ] $($more:tt)* ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( . $outer $( :: $inner )* [ ] $($more)* ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
+        }
+    };
+    // primitive[]... with explicit `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
+      $n:ident : $p:ident [ ] $($more:tt)* as $as_ty:ty ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( $p [ ] $($more)* as $as_ty ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
+        }
+    };
+    // primitive[]... without `as`
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident : $p:ident [ ] $($more:tt)* ) => {
+        jnorm_type_then!{
+            jnorm_args_then_push,
+            ( $p [ ] $($more)* ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
+        }
+    };
+
     // java.name with as
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
       $n:ident : $first:ident $( . $seg:ident )+ $( :: $inner:ident )* as $as_ty:ty ) => {
@@ -1092,14 +1257,20 @@ type jint = i32;
 
 jgen_bind_method!(
     this: JFoo,
-    javaFunction as rust_function_a,
+    javaFunction as rust_function_0,
     sig: (a: java.lang.String, c: jint) -> void
 );
 
 jgen_bind_method!(
     this: JFoo,
-    javaFunction as rust_function,
+    javaFunction as rust_function_1,
     sig: (a: &JString, b: java.lang.String as JString, c: jint) -> void
+);
+
+jgen_bind_method!(
+    this: JFoo,
+    javaFunction as rust_function_2,
+    sig: (a: &JString, b: java.lang.String[], c: jint) -> void
 );
 
 fn main() {}
