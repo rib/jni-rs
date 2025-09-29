@@ -627,18 +627,31 @@ macro_rules! jnorm_args_then_munch {
         )
     };
 
-    // primitive[]… (suffix form)
+    // primitive[] at end of argument list (no tokens after [])
     ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
       $n:ident :
       $p:ident
-      [ ] $($after:tt)*
+      [ ]
     ) => {
-        __jnorm_arg_suffix!(
+        __jnorm_arg_suffix!{
+            jnorm_args_then_push, $cb, @ $mode,
+            ( $($acc)* ), ( $($pass)* ), $n,
+            base( $p ), dims()
+        }
+    };
+
+    // primitive[]… (suffix form) with more tokens after []
+    ( @ $mode:ident $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)* ),
+      $n:ident :
+      $p:ident
+      [ ] $($after:tt)+
+    ) => {
+        __jnorm_arg_suffix!{
             jnorm_args_then_push, $cb, @ $mode,
             ( $($acc)* ), ( $($pass)* ), $n,
             base( $p ), dims(),
-            $($after)*
-        )
+            $($after)+
+        }
     };
 }
 
@@ -1160,8 +1173,17 @@ mod objects {
             core::ptr::null_mut()
         }
     }
+    pub struct JPrimitiveArray<T>(std::marker::PhantomData<T>);
+    impl<T> crate::refs::Reference for JPrimitiveArray<T> {
+        fn class_name() -> Cow<'static, str> {
+            Cow::Borrowed("[I") // Simplified - normally would depend on T
+        }
+        fn as_raw(&self) -> jni::sys::jobject {
+            core::ptr::null_mut()
+        }
+    }
 }
-pub use objects::{JClass, JObject, JObjectArray, JString};
+pub use objects::{JClass, JObject, JObjectArray, JPrimitiveArray, JString};
 
 macro_rules! jni_call_check_ex {
     ($this:expr, $ver:ident, $api:ident, $obj:ident, $mid:expr, $args:expr) => {{
@@ -1287,4 +1309,13 @@ jgen_bind_method!(
     javaFunction as rust_function_7,
     sig: (a: &JString, b: java.lang.String[], c: jint[]) -> void
 );
-fn main() {}
+fn main() {
+    // Test that primitive arrays now parse correctly
+    println!("Primitive array descriptors:");
+    println!("jint[] -> {}", jdesc_of!(jint[]));
+    println!("jbyte[] -> {}", jdesc_of!(jbyte[]));
+    println!("jchar[] -> {}", jdesc_of!(jchar[]));
+
+    // Test that the jgen_bind_method macro for rust_function_7 compiled successfully
+    println!("Successfully parsed primitive array arguments in rust_function_7!");
+}
