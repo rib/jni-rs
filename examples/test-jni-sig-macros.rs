@@ -899,45 +899,6 @@ macro_rules! jnorm_sig_then {
     };
 }
 
-// ----- Select the correct CallXxxMethodA for the return type -----
-macro_rules! _call_api_for_ret {
-    ( prim ( void     ) ) => {
-        CallVoidMethodA
-    };
-    ( prim ( jboolean ) ) => {
-        CallBooleanMethodA
-    };
-    ( prim ( jbyte    ) ) => {
-        CallByteMethodA
-    };
-    ( prim ( jchar    ) ) => {
-        CallCharMethodA
-    };
-    ( prim ( jshort   ) ) => {
-        CallShortMethodA
-    };
-    ( prim ( jint     ) ) => {
-        CallIntMethodA
-    };
-    ( prim ( jlong    ) ) => {
-        CallLongMethodA
-    };
-    ( prim ( jfloat   ) ) => {
-        CallFloatMethodA
-    };
-    ( prim ( jdouble  ) ) => {
-        CallDoubleMethodA
-    };
-
-    // Any reference-like return → object
-    ( obj  ( $($rt:tt)+ ) $( as rust ( $($as:tt)+ ) )? ) => {
-        CallObjectMethodA
-    };
-    ( rust ( $($r:tt)+ ) ) => {
-        CallObjectMethodA
-    };
-}
-
 // Helper to unwrap one layer of parentheses around a token tree
 macro_rules! unwrap_parens {
     ( ( $($inner:tt)* ) ) => { $($inner)* };
@@ -966,6 +927,217 @@ macro_rules! jgen_method_lookup_fn {
 }
 
 // ---------- helpers to emit the call fn from normalized args/ret ----------
+/// Directly calls a Env FFI function, nothing else
+///
+/// # Safety
+///
+/// When calling any function added after JNI 1.1 you must know that it's valid
+/// for the current JNI version.
+macro_rules! jni_call_unchecked {
+    ( $jnienv:expr, $version:tt, $name:ident $(, $args:expr )*) => {{
+        // Safety: we know that the Env pointer can't be null, since that's
+        // checked in `from_raw()`
+        let env: *mut jni_sys::JNIEnv = $jnienv.get_raw();
+        let interface: *const jni_sys::JNINativeInterface_ = *env;
+        ((*interface).$version.$name)(env $(, $args)*)
+    }};
+}
+
+/// Calls a Env function, then checks for a pending exception
+///
+/// This only checks for an exception, it doesn't clear the exception and so the
+/// exception will be thrown if the native code returns to the JVM.
+///
+/// Returns `Err` if there is a pending exception after the call.
+macro_rules! jni_call_check_ex {
+    ( $jnienv:expr, $version:tt, $name:ident $(, $args:expr )* ) => ({
+        let ret = jni_call_unchecked!($jnienv, $version, $name $(, $args)*);
+        if $jnienv.exception_check() {
+            Err(crate::errors::Error::JavaException)
+        } else {
+            Ok(ret)
+        }
+    })
+}
+
+macro_rules! _jni_call_from_norm_ret {
+    (
+        $env:expr, $this:expr, $method_id:expr, $jni_args:expr,
+        ( prim ( void ) )
+    ) => {
+        unsafe {
+            jni_call_check_ex!(
+                $env,
+                v1_1,
+                CallVoidMethodA,
+                ($this).as_ref().as_raw(),
+                $method_id,
+                $jni_args
+            );
+            Ok(())
+        }
+    };
+    (
+        $env:expr, $this:expr, $method_id:expr, $jni_args:expr,
+        ( prim ( jboolean ) )
+    ) => {
+        unsafe {
+            let ret: jni::sys::jboolean = jni_call_check_ex!(
+                $env,
+                v1_1,
+                CallBooleanMethodA,
+                ($this).as_ref().as_raw(),
+                $method_id,
+                $jni_args
+            )?;
+            Ok(ret)
+        }
+    };
+    (
+        $env:expr, $this:expr, $method_id:expr, $jni_args:expr,
+        ( prim ( jbyte ) )
+    ) => {
+        unsafe {
+            let ret: jni::sys::jbyte = jni_call_check_ex!(
+                $env,
+                v1_1,
+                CallByteMethodA,
+                ($this).as_ref().as_raw(),
+                $method_id,
+                $jni_args
+            )?;
+            Ok(ret)
+        }
+    };
+    (
+        $env:expr, $this:expr, $method_id:expr, $jni_args:expr,
+        ( prim ( jchar ) )
+    ) => {
+        unsafe {
+            let ret: jni::sys::jchar = jni_call_check_ex!(
+                $env,
+                v1_1,
+                CallCharMethodA,
+                ($this).as_ref().as_raw(),
+                $method_id,
+                $jni_args
+            )?;
+            Ok(ret)
+        }
+    };
+    (
+        $env:expr, $this:expr, $method_id:expr, $jni_args:expr,
+        ( prim ( jshort ) )
+    ) => {
+        unsafe {
+            let ret: jni::sys::jshort = jni_call_check_ex!(
+                $env,
+                v1_1,
+                CallShortMethodA,
+                ($this).as_ref().as_raw(),
+                $method_id,
+                $jni_args
+            )?;
+            Ok(ret)
+        }
+    };
+    (
+        $env:expr, $this:expr, $method_id:expr, $jni_args:expr,
+        ( prim ( jint ) )
+    ) => {
+        unsafe {
+            let ret: jni::sys::jint = jni_call_check_ex!(
+                $env,
+                v1_1,
+                CallIntMethodA,
+                ($this).as_ref().as_raw(),
+                $method_id,
+                $jni_args
+            )?;
+            Ok(ret)
+        }
+    };
+    (
+        $env:expr, $this:expr, $method_id:expr, $jni_args:expr,
+        ( prim ( jlong ) )
+    ) => {
+        unsafe {
+            let ret: jni::sys::jlong = jni_call_check_ex!(
+                $env,
+                v1_1,
+                CallLongMethodA,
+                ($this).as_ref().as_raw(),
+                $method_id,
+                $jni_args
+            )?;
+            Ok(ret)
+        }
+    };
+    (
+        $env:expr, $this:expr, $method_id:expr, $jni_args:expr,
+        ( prim ( jfloat ) )
+    ) => {
+        unsafe {
+            let ret: jni::sys::jfloat = jni_call_check_ex!(
+                $env,
+                v1_1,
+                CallFloatMethodA,
+                ($this).as_ref().as_raw(),
+                $method_id,
+                $jni_args
+            )?;
+            Ok(ret)
+        }
+    };
+    (
+        $env:expr, $this:expr, $method_id:expr, $jni_args:expr,
+        ( prim ( jdouble ) )
+    ) => {
+        unsafe {
+            let ret: jni::sys::jdouble = jni_call_check_ex!(
+                $env,
+                v1_1,
+                CallDoubleMethodA,
+                ($this).as_ref().as_raw(),
+                $method_id,
+                $jni_args
+            )?;
+            Ok(ret)
+        }
+    };
+    (
+        $env:expr, $this:expr, $method_id:expr, $jni_args:expr,
+        ( obj  ( $($rt:tt)+ ) as rust ( $as_ty:ty ) )
+    ) => {
+        unsafe {
+            let ret_obj: jni::sys::jobject = jni_call_check_ex!(
+                $this,
+                v1_1,
+                CallObjectMethodA,
+                $this.as_ref().as_raw(),
+                $method_id,
+                $jni_args
+            )?;
+            Ok(<$as_ty>::from_raw($env, ret_obj)?)
+        }
+    };
+    (
+        $env:expr, $this:expr, $method_id:expr, $jni_args:expr,
+        ( rust ( $as_ty:ty ) )
+    ) => {
+        unsafe {
+            let ret_obj: jni::sys::jobject = jni_call_check_ex!(
+                $this,
+                v1_1,
+                CallObjectMethodA,
+                $this.as_ref().as_raw(),
+                $method_id,
+                $jni_args
+            )?;
+            Ok(<$as_ty>::from_raw($env, ret_obj)?)
+        }
+    };
+}
 
 // Final emitter: we now have normalized args and ret; generate the whole fn
 macro_rules! _emit_method_call_fn {
@@ -986,15 +1158,13 @@ macro_rules! _emit_method_call_fn {
 
                 let _ = &this;
 
-                jni_call_check_ex!(
-                    this, v1_1,
-                    jnorm_ret_then!(_call_api_for_ret, ( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? )),
-                    obj,
+                _jni_call_from_norm_ret!{
+                    env,
+                    this,
                     method_id,
-                    &jni_args
-                )
-
-                //todo!()
+                    &jni_args,
+                    ( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? )
+                }
             }
         }
     };
