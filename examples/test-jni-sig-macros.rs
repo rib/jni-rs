@@ -1,6 +1,8 @@
 // Import the `paste!` macro
 use paste::paste;
 
+//pub use crate::sys::{jboolean, jbyte, jchar, jdouble, jfloat, jint, jlong, jshort, jvalue};
+
 macro_rules! jprim_canon {
     (void) => {
         void
@@ -184,22 +186,22 @@ macro_rules! rust_type_for_java_array_default {
     };
 
     // base: 1D primitive arrays
-    ( [ jboolean ] ) => { JPrimitiveArray<jboolean> };
-    ( [ jbyte    ] ) => { JPrimitiveArray<jbyte>    };
-    ( [ jchar    ] ) => { JPrimitiveArray<jchar>    };
-    ( [ jshort   ] ) => { JPrimitiveArray<jshort>   };
-    ( [ jint     ] ) => { JPrimitiveArray<jint>     };
-    ( [ jlong    ] ) => { JPrimitiveArray<jlong>    };
-    ( [ jfloat   ] ) => { JPrimitiveArray<jfloat>   };
-    ( [ jdouble  ] ) => { JPrimitiveArray<jdouble>  };
-    ( [ boolean  ] ) => { JPrimitiveArray<jboolean> };
-    ( [ byte     ] ) => { JPrimitiveArray<jbyte>    };
-    ( [ char     ] ) => { JPrimitiveArray<jchar>    };
-    ( [ short    ] ) => { JPrimitiveArray<jshort>   };
-    ( [ int      ] ) => { JPrimitiveArray<jint>     };
-    ( [ long     ] ) => { JPrimitiveArray<jlong>    };
-    ( [ float    ] ) => { JPrimitiveArray<jfloat>   };
-    ( [ double   ] ) => { JPrimitiveArray<jdouble>  };
+    ( [ jboolean ] ) => { JPrimitiveArray<$crate::sys::jboolean> };
+    ( [ jbyte    ] ) => { JPrimitiveArray<$crate::sys::jbyte>    };
+    ( [ jchar    ] ) => { JPrimitiveArray<$crate::sys::jchar>    };
+    ( [ jshort   ] ) => { JPrimitiveArray<$crate::sys::jshort>   };
+    ( [ jint     ] ) => { JPrimitiveArray<$crate::sys::jint>     };
+    ( [ jlong    ] ) => { JPrimitiveArray<$crate::sys::jlong>    };
+    ( [ jfloat   ] ) => { JPrimitiveArray<$crate::sys::jfloat>   };
+    ( [ jdouble  ] ) => { JPrimitiveArray<$crate::sys::jdouble>  };
+    ( [ boolean  ] ) => { JPrimitiveArray<$crate::sys::jboolean> };
+    ( [ byte     ] ) => { JPrimitiveArray<$crate::sys::jbyte>    };
+    ( [ char     ] ) => { JPrimitiveArray<$crate::sys::jchar>    };
+    ( [ short    ] ) => { JPrimitiveArray<$crate::sys::jshort>   };
+    ( [ int      ] ) => { JPrimitiveArray<$crate::sys::jint>     };
+    ( [ long     ] ) => { JPrimitiveArray<$crate::sys::jlong>    };
+    ( [ float    ] ) => { JPrimitiveArray<$crate::sys::jfloat>   };
+    ( [ double   ] ) => { JPrimitiveArray<$crate::sys::jdouble>  };
 
     // base: 1D object arrays (named package or default package)
     ( [ $first:ident . $($rest:tt)+ ] ) => { $crate::objects::JObjectArray<$crate::objects::JObject> };
@@ -1677,8 +1679,4 @@ fn main() {
         )
         .unwrap();
     };
-
-    println!("\nMethod bindings work!");
-    println!("✓ Primitive return functions use &Env");
-    println!("✓ Object return functions use &mut Env");
 }
