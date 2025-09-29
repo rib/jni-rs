@@ -953,7 +953,7 @@ macro_rules! jni_call_check_ex {
     ( $jnienv:expr, $version:tt, $name:ident $(, $args:expr )* ) => ({
         let ret = jni_call_unchecked!($jnienv, $version, $name $(, $args)*);
         if $jnienv.exception_check() {
-            Err(crate::errors::Error::JavaException)
+            Err(()) // Simplified error for mock
         } else {
             Ok(ret)
         }
@@ -972,7 +972,7 @@ macro_rules! _jni_call_from_norm_ret {
                 CallVoidMethodA,
                 ($this).as_ref().as_raw(),
                 $method_id,
-                $jni_args
+                $jni_args.as_ptr()
             );
             Ok(())
         }
@@ -988,7 +988,7 @@ macro_rules! _jni_call_from_norm_ret {
                 CallBooleanMethodA,
                 ($this).as_ref().as_raw(),
                 $method_id,
-                $jni_args
+                $jni_args.as_ptr()
             )?;
             Ok(ret)
         }
@@ -1004,7 +1004,7 @@ macro_rules! _jni_call_from_norm_ret {
                 CallByteMethodA,
                 ($this).as_ref().as_raw(),
                 $method_id,
-                $jni_args
+                $jni_args.as_ptr()
             )?;
             Ok(ret)
         }
@@ -1020,7 +1020,7 @@ macro_rules! _jni_call_from_norm_ret {
                 CallCharMethodA,
                 ($this).as_ref().as_raw(),
                 $method_id,
-                $jni_args
+                $jni_args.as_ptr()
             )?;
             Ok(ret)
         }
@@ -1036,7 +1036,7 @@ macro_rules! _jni_call_from_norm_ret {
                 CallShortMethodA,
                 ($this).as_ref().as_raw(),
                 $method_id,
-                $jni_args
+                $jni_args.as_ptr()
             )?;
             Ok(ret)
         }
@@ -1052,7 +1052,7 @@ macro_rules! _jni_call_from_norm_ret {
                 CallIntMethodA,
                 ($this).as_ref().as_raw(),
                 $method_id,
-                $jni_args
+                $jni_args.as_ptr()
             )?;
             Ok(ret)
         }
@@ -1068,7 +1068,7 @@ macro_rules! _jni_call_from_norm_ret {
                 CallLongMethodA,
                 ($this).as_ref().as_raw(),
                 $method_id,
-                $jni_args
+                $jni_args.as_ptr()
             )?;
             Ok(ret)
         }
@@ -1084,7 +1084,7 @@ macro_rules! _jni_call_from_norm_ret {
                 CallFloatMethodA,
                 ($this).as_ref().as_raw(),
                 $method_id,
-                $jni_args
+                $jni_args.as_ptr()
             )?;
             Ok(ret)
         }
@@ -1100,7 +1100,7 @@ macro_rules! _jni_call_from_norm_ret {
                 CallDoubleMethodA,
                 ($this).as_ref().as_raw(),
                 $method_id,
-                $jni_args
+                $jni_args.as_ptr()
             )?;
             Ok(ret)
         }
@@ -1111,12 +1111,12 @@ macro_rules! _jni_call_from_norm_ret {
     ) => {
         unsafe {
             let ret_obj: jni::sys::jobject = jni_call_check_ex!(
-                $this,
+                $env,
                 v1_1,
                 CallObjectMethodA,
-                $this.as_ref().as_raw(),
+                ($this).as_ref().as_raw(),
                 $method_id,
-                $jni_args
+                $jni_args.as_ptr()
             )?;
             Ok(<$as_ty>::from_raw($env, ret_obj)?)
         }
@@ -1127,12 +1127,12 @@ macro_rules! _jni_call_from_norm_ret {
     ) => {
         unsafe {
             let ret_obj: jni::sys::jobject = jni_call_check_ex!(
-                $this,
+                $env,
                 v1_1,
                 CallObjectMethodA,
-                $this.as_ref().as_raw(),
+                ($this).as_ref().as_raw(),
                 $method_id,
-                $jni_args
+                $jni_args.as_ptr()
             )?;
             Ok(<$as_ty>::from_raw($env, ret_obj)?)
         }
@@ -1264,16 +1264,40 @@ macro_rules! jgen_bind_method {
 use std::{borrow::Cow, ffi::CStr, fmt};
 
 type Result<T> = core::result::Result<T, ()>;
-type JMethodID = ();
+type JMethodID = *mut jni::sys::_jmethodID;
 
 #[derive(Default)]
 struct JFoo;
+
+impl AsRef<JFoo> for JFoo {
+    fn as_ref(&self) -> &JFoo {
+        self
+    }
+}
+
+impl Reference for JFoo {
+    fn class_name() -> Cow<'static, str> {
+        Cow::Borrowed("com/example/JFoo")
+    }
+
+    fn as_raw(&self) -> jni::sys::jobject {
+        std::ptr::null_mut()
+    }
+}
 #[derive(Default)]
 struct Env;
 
 impl Env {
     fn get_method_id(&mut self, _class: &JClass, _name: &str, _sig: &str) -> Result<JMethodID> {
-        Ok(())
+        Ok(std::ptr::null_mut())
+    }
+
+    fn get_raw(&mut self) -> *mut jni::sys::JNIEnv {
+        std::ptr::null_mut()
+    }
+
+    fn exception_check(&self) -> bool {
+        false
     }
 }
 
@@ -1319,6 +1343,12 @@ mod objects {
             core::ptr::null_mut()
         }
     }
+
+    impl JObject {
+        pub fn from_raw(_env: &mut crate::Env, _obj: jni::sys::jobject) -> crate::Result<Self> {
+            Ok(JObject)
+        }
+    }
     #[derive(Default)]
     pub struct JClass;
     impl AsRef<JClass> for JClass {
@@ -1349,6 +1379,12 @@ mod objects {
             core::ptr::null_mut()
         }
     }
+
+    impl JString {
+        pub fn from_raw(_env: &mut crate::Env, _obj: jni::sys::jobject) -> crate::Result<Self> {
+            Ok(JString)
+        }
+    }
     pub struct JObjectArray<T>(std::marker::PhantomData<T>);
     impl<T> AsRef<JObjectArray<T>> for JObjectArray<T> {
         fn as_ref(&self) -> &JObjectArray<T> {
@@ -1361,6 +1397,12 @@ mod objects {
         }
         fn as_raw(&self) -> jni::sys::jobject {
             core::ptr::null_mut()
+        }
+    }
+
+    impl<T> JObjectArray<T> {
+        pub fn from_raw(_env: &mut crate::Env, _obj: jni::sys::jobject) -> crate::Result<Self> {
+            Ok(JObjectArray(std::marker::PhantomData))
         }
     }
     pub struct JPrimitiveArray<T>(std::marker::PhantomData<T>);
@@ -1379,20 +1421,6 @@ mod objects {
     }
 }
 pub use objects::{JClass, JObject, JObjectArray, JPrimitiveArray, JString};
-
-macro_rules! jni_call_check_ex {
-    ($this:expr, $ver:ident, $api:ident, $obj:ident, $mid:expr, $args:expr) => {{
-        let _ = (
-            $this,
-            stringify!($ver),
-            stringify!($api),
-            stringify!($obj),
-            $mid,
-            $args,
-        );
-        Ok(Default::default())
-    }};
-}
 
 const _: &str = jdesc!(prim(jint)); // "I"
 const _: &str = jdesc!(prim(void)); // "V"
@@ -1515,7 +1543,6 @@ fn main() {
     - Add support multi-dimensional primitive arrays (e.g. int[][]) mapping to `JObjectArray<JPrimitiveArray<jint>>`
     - Output only one literal or format signature without a runtime if statement.
     - _call function should take a shared `&Env` if returning a primitive type or void.
-    - hookup JNI sys calls
      */
 
     // Test that primitive arrays now parse correctly
