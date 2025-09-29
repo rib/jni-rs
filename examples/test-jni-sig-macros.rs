@@ -213,94 +213,155 @@ macro_rules! rust_array_wrapper_ty {
     ( [ $ty:path ] ) => { JObjectArray<$ty> };
 }
 
-/*  Inputs:
-      name: jchar
-      name: java.lang.String
-      name: java.lang.String as JString
-      name: &JString
-      name: &[&JString]
-    Outputs:
-      name: prim(jchar) as jchar
-      name: obj(java.lang.String) as JObject
-      name: obj(java.lang.String) as JString
-      name: rust(&JString) as &JString
-      name: rust(&[&JString]) as &[&JString]
-*/
-macro_rules! jnorm_args_munch {
-    ( ( ) ( $($acc:tt)* ) ) => { ( $($acc)* ) };
+// Normalize one raw type and immediately invoke a callback macro with the normalized form.
+// Normalized shapes:
+//   - prim( jprim_canon!(...) )
+//   - obj( <java.name or .Default::Inner> ) as rust( <Ty> )   // default Ty = JObject if no `as`
+//   - rust( <Ty> )                                           // Rust refs, including &[...]
+// Usage:
+//   jnorm_type_then!(CB, ( <raw-type> ) [, extra tokens... ])
+// Calls:
+//   CB!( <normalized-type> [, extra tokens...] )
+//
+// Normalization examples:
+//   - jint -> prim(jint)
+//   - int  -> prim(jint)
+//   - java.lang.String -> obj(java.lang.String) as rust(JObject)
+//   - .NoPackage -> obj(NoPackage) as rust(JObject)
+//   - .NoPackage as JString -> obj(NoPackage) as rust(JString)
+//   - java.lang.String as JString -> obj(java.lang.String) as rust(JString)
+//   - &JString -> rust(JString)
+//   - &[JString] -> rust(JObjectArray<JString>)
+//   - &[[JString]] -> rust(JObjectArray<JObjectArray<JString>>)
+//   - &[jint] -> rust(JPrimitiveArray<jint>)
+macro_rules! jnorm_type_then {
+    // ----- Rust reference arrays -----
+    // 2D+ object arrays: &[[T]] → rust(JObjectArray<JObjectArray<T>>)
+    ( $cb:tt, ( & [ [ $($inner:tt)+ ] ] ) $(, $($pass:tt)* )? ) => {
+        jnorm_type_then!(@objarr $cb, () (), [ [ $($inner)+ ] ] $(, $($pass)* )? )
+    };
+    // 1D object arrays: &[T] → rust(JObjectArray<T>)
+    ( $cb:tt, ( & [ $ty:path ] ) $(, $($pass:tt)* )? ) => {
+        $cb!( rust( JObjectArray<$ty> ) $(, $($pass)* )? )
+    };
+    // Allow element references (e.g., &[&JString]) by stripping '&'
+    ( $cb:tt, ( & [ & $ty:path ] ) $(, $($pass:tt)* )? ) => {
+        $cb!( rust( JObjectArray<$ty> ) $(, $($pass)* )? )
+    };
+    // 1D primitive arrays: &[int] → rust(JPrimitiveArray<jint>)
+    ( $cb:tt, ( & [ jboolean ] ) $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jboolean> ) $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ boolean ] )  $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jboolean> ) $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ jbyte ] )    $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jbyte> )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ byte ] )     $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jbyte> )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ jchar ] )    $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jchar> )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ char ] )     $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jchar> )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ jshort ] )   $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jshort> )   $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ short ] )    $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jshort> )   $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ jint ] )     $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jint> )     $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ int ] )      $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jint> )     $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ jlong ] )    $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jlong> )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ long ] )     $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jlong> )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ jfloat ] )   $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jfloat> )   $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ float ] )    $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jfloat> )   $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ jdouble ] )  $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jdouble> )  $(, $($pass)* )? ) };
+    ( $cb:tt, ( & [ double ] )   $(, $($pass:tt)* )? ) => { $cb!( rust( JPrimitiveArray<jdouble> )  $(, $($pass)* )? ) };
+    // Reject multi-dimensional primitive arrays (e.g., &[[int]])
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ $p:ident ] $(, $($pass:tt)* )? ) => {
+        compile_error!("Multi-dimensional primitive arrays are not supported")
+    };
+    // Build nested object array type: accumulate generics: (open...) (close...)
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ [ $($inner:tt)+ ] ] $(, $($pass:tt)* )? ) => {
+        jnorm_type_then!(@objarr $cb, ( $($open)* JObjectArray< ) ( > $($close)* ), [ $($inner)+ ] $(, $($pass)* )? )
+    };
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ $ty:path ] $(, $($pass:tt)* )? ) => {
+        $cb!( rust( $($open)* $ty $($close)* ) $(, $($pass)* )? )
+    };
+    ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ & $ty:path ] $(, $($pass:tt)* )? ) => {
+        $cb!( rust( $($open)* $ty $($close)* ) $(, $($pass)* )? )
+    };
 
-    // package name with 'as'
-    ( ( $n:ident : $first:ident . $($restname:tt)+ as $as_ty:ty , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
-        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: obj( $first . $($restname)+ ) as rust( $as_ty ) , ) )
+    // ----- Simple Rust ref: &Path -----
+    ( $cb:tt, ( & $rust:ty ) $(, $($pass:tt)* )? ) => { $cb!( rust( $rust ) $(, $($pass)* )? ) };
+
+    // ----- Java object type (named package) -----
+    ( $cb:tt, ( $first:ident . $($rest:tt)+ as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
+        $cb!( obj( $first . $($rest)+ ) as rust( $as_ty ) $(, $($pass)* )? )
     };
-    ( ( $n:ident : $first:ident . $($restname:tt)+ as $as_ty:ty ) ( $($acc:tt)* ) ) => {
-        ( $($acc)* $n: obj( $first . $($restname)+ ) as rust( $as_ty ) )
+    ( $cb:tt, ( $first:ident . $($rest:tt)+ ) $(, $($pass:tt)* )? ) => {
+        $cb!( obj( $first . $($rest)+ ) as rust( JObject ) $(, $($pass)* )? )
     };
 
-    // package name, default as JObject
-    ( ( $n:ident : $first:ident . $($restname:tt)+ , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
-        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: obj( $first . $($restname)+ ) as rust( JObject ) , ) )
+    // ----- Java object type (default package) -----
+    ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
+        $cb!( obj( $outer $( :: $inner )* ) as rust( $as_ty ) $(, $($pass)* )? )
     };
-    ( ( $n:ident : $first:ident . $($restname:tt)+ ) ( $($acc:tt)* ) ) => {
-        ( $($acc)* $n: obj( $first . $($restname)+ ) as rust( JObject ) )
-    };
-
-    // default package with 'as'
-    ( ( $n:ident : . $outer:ident $( :: $inner:ident )* as $as_ty:ty , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
-        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: obj( . $outer $( :: $inner )* ) as rust( $as_ty ) , ) )
-    };
-    ( ( $n:ident : . $outer:ident $( :: $inner:ident )* as $as_ty:ty ) ( $($acc:tt)* ) ) => {
-        ( $($acc)* $n: obj( . $outer $( :: $inner )* ) as rust( $as_ty ) )
+    ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* ) $(, $($pass:tt)* )? ) => {
+        $cb!( obj( $outer $( :: $inner )* ) as rust( JObject ) $(, $($pass)* )? )
     };
 
-    // default package, default as JObject
-    ( ( $n:ident : . $outer:ident $( :: $inner:ident )* , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
-        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: obj( . $outer $( :: $inner )* ) as rust( JObject ) , ) )
-    };
-    ( ( $n:ident : . $outer:ident $( :: $inner:ident )* ) ( $($acc:tt)* ) ) => {
-        ( $($acc)* $n: obj( . $outer $( :: $inner )* ) as rust( JObject ) )
-    };
+    // ----- Primitives (canonicalize) -----
+    ( $cb:tt, ( void )     $(, $($pass:tt)* )? ) => { $cb!( prim( void )     $(, $($pass)* )? ) };
+    ( $cb:tt, ( jboolean ) $(, $($pass:tt)* )? ) => { $cb!( prim( jboolean ) $(, $($pass)* )? ) };
+    ( $cb:tt, ( boolean )  $(, $($pass:tt)* )? ) => { $cb!( prim( jboolean ) $(, $($pass)* )? ) };
+    ( $cb:tt, ( jbyte )    $(, $($pass:tt)* )? ) => { $cb!( prim( jbyte )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( byte )     $(, $($pass:tt)* )? ) => { $cb!( prim( jbyte )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( jchar )    $(, $($pass:tt)* )? ) => { $cb!( prim( jchar )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( char )     $(, $($pass:tt)* )? ) => { $cb!( prim( jchar )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( jshort )   $(, $($pass:tt)* )? ) => { $cb!( prim( jshort )   $(, $($pass)* )? ) };
+    ( $cb:tt, ( short )    $(, $($pass:tt)* )? ) => { $cb!( prim( jshort )   $(, $($pass)* )? ) };
+    ( $cb:tt, ( jint )     $(, $($pass:tt)* )? ) => { $cb!( prim( jint )     $(, $($pass)* )? ) };
+    ( $cb:tt, ( int )      $(, $($pass:tt)* )? ) => { $cb!( prim( jint )     $(, $($pass)* )? ) };
+    ( $cb:tt, ( jlong )    $(, $($pass:tt)* )? ) => { $cb!( prim( jlong )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( long )     $(, $($pass:tt)* )? ) => { $cb!( prim( jlong )    $(, $($pass)* )? ) };
+    ( $cb:tt, ( jfloat )   $(, $($pass:tt)* )? ) => { $cb!( prim( jfloat )   $(, $($pass)* )? ) };
+    ( $cb:tt, ( float )    $(, $($pass:tt)* )? ) => { $cb!( prim( jfloat )   $(, $($pass)* )? ) };
+    ( $cb:tt, ( jdouble )  $(, $($pass:tt)* )? ) => { $cb!( prim( jdouble )  $(, $($pass)* )? ) };
+    ( $cb:tt, ( double )   $(, $($pass:tt)* )? ) => { $cb!( prim( jdouble )  $(, $($pass)* )? ) };
 
-    // & [ ... ]
-    ( ( $n:ident : & [ $($inner:tt)+ ] , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
-        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: rust(rust_array_wrapper_ty(&[ $($inner)+ ])), ) )
-    };
-    ( ( $n:ident : & [ $($inner:tt)+ ] ) ( $($acc:tt)* ) ) => {
-        ( $($acc)* $n: rust(rust_array_wrapper_ty(&[ $($inner)+ ])) )
-    };
+    // ----- Already-normalized (idempotent) -----
+    ( $cb:tt, ( prim ( $($p:tt)+ ) ) $(, $($pass:tt)* )? ) => { $cb!( prim( $($p)+ ) $(, $($pass)* )? ) };
+    ( $cb:tt, ( obj ( $($j:tt)+ ) as rust ( $as:ty ) ) $(, $($pass:tt)* )? ) => { $cb!( obj( $($j)+ ) as rust( $as ) $(, $($pass)* )? ) };
+    ( $cb:tt, ( rust ( $as:ty ) ) $(, $($pass:tt)* )? ) => { $cb!( rust( $as ) $(, $($pass)* )? ) };
+}
 
-    // & Path
-    ( ( $n:ident : & $rust:path , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
-        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: rust($rust) , ) )
-    };
-    ( ( $n:ident : & $rust:path ) ( $($acc:tt)* ) ) => {
-        ( $($acc)* $n: rust($rust) )
-    };
-
-    // primitives (last to avoid eating 'java' as a primitive)
-    ( ( $n:ident : $p:ident , $($rest:tt)* ) ( $($acc:tt)* ) ) => {
-        jnorm_args_munch!( ( $($rest)* ) ( $($acc)* $n: prim( jprim_canon!($p) ) , ) )
-    };
-    ( ( $n:ident : $p:ident ) ( $($acc:tt)* ) ) => {
-        ( $($acc)* $n: prim( jprim_canon!($p) ) )
+// Rework jnorm_ret_then to use jnorm_type_then (variadic; forwards extra tokens)
+macro_rules! jnorm_ret_then {
+    ( $cb:tt, ( $($ret:tt)+ ) $(, $($pass:tt)* )? ) => {
+        jnorm_type_then!( $cb, ( $($ret)+ ) $(, $($pass)* )? )
     };
 }
 
-macro_rules! jnorm_args {
-    ( $( $tokens:tt )* ) => {
-        jnorm_args_munch!( ( $( $tokens )* ) () )
+// Normalize an args list, then invoke a callback macro that expects normalized args:
+//   jnorm_args_then!(CB, ( a: TyA, b: TyB, ... ) ) → CB!( ( a: <normA>, b: <normB>, ... ) )
+macro_rules! jnorm_args_then {
+    ( $cb:tt, ( $($args:tt)* ) ) => {
+        jnorm_args_then_munch!( $cb, (), $($args)* )
     };
 }
 
-// Return normalization → keep same “as …” rule so downstream is uniform
-macro_rules! jnorm_ret {
-    ( $first:ident . $($rest:tt)+ as $as_ty:ty ) => { obj( $first . $($rest)+ ) as rust( $as_ty ) };
-    ( $first:ident . $($rest:tt)+ ) => { obj( $first . $($rest)+ ) as rust( JObject ) };
-    ( . $outer:ident $( :: $inner:ident )* as $as_ty:ty ) => { obj( . $outer $( :: $inner )* ) as rust( $as_ty ) };
-    ( . $outer:ident $( :: $inner:ident )* ) => { obj( . $outer $( :: $inner )* ) as rust( JObject ) };
-    ( & $rust:ty ) => { rust($rust) };
-    ( & [ $($inner:tt)+ ] ) => { rust(rust_array_wrapper_ty(&[ $($inner)+ ])) };
-    ( $p:ident ) => { prim( jprim_canon!($p) ) };
+// Internal muncher that uses jnorm_type_then per argument type and accumulates a normalized list
+macro_rules! jnorm_args_then_munch {
+    // End of list
+    ( $cb:tt, ( $($acc:tt)* ) ) => { $cb!( ( $($acc)* ) ) };
+
+    // With trailing comma
+    ( $cb:tt, ( $($acc:tt)* ), $n:ident : $($ty:tt)+ , $($rest:tt)* ) => {
+        jnorm_type_then!( jnorm_args_then_push, ( $($ty)+ ), $cb, ( $($acc)* ), $n, $($rest)* )
+    };
+    // Last element
+    ( $cb:tt, ( $($acc:tt)* ), $n:ident : $($ty:tt)+ ) => {
+        jnorm_type_then!( jnorm_args_then_push, ( $($ty)+ ), $cb, ( $($acc)* ), $n )
+    };
+}
+
+// Push one normalized arg into accumulator and continue munching
+macro_rules! jnorm_args_then_push {
+    ( $($norm:tt)+, $cb:tt, ( $($acc:tt)* ), $n:ident, $($rest:tt)* ) => {
+        jnorm_args_then_munch!( $cb, ( $($acc)* $n: $($norm)+ , ), $($rest)* )
+    };
+    ( $($norm:tt)+, $cb:tt, ( $($acc:tt)* ), $n:ident ) => {
+        jnorm_args_then_munch!( $cb, ( $($acc)* $n: $($norm)+ ) )
+    };
 }
 
 // ---------- helpers: presence of rust(...), building pieces ----------
@@ -502,9 +563,21 @@ macro_rules! build_jni_args_array {
 }
 
 // Expand a normalized args list into a typed parameter list
-macro_rules! param_list_from_norm {
+macro_rules! param_list_from_args {
     ( ( $( $an:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* $(,)? ) ) => {
         $( $an: _param_ty_from_norm!( $ak($($at)*) $( as rust ( $($aas)+ ) )? ) ),*
+    };
+}
+
+// Normalize (args, ret) pair, then invoke callback that expects two groups:
+//   $cb!( ( <normalized args> ), ( <normalized ret> ) )
+macro_rules! jnorm_sig_then {
+    ( $cb:tt, ( $($args:tt)* ), ( $($ret:tt)+ ) ) => {
+        $cb!( ( jnorm_args!( $($args)* ) ), ( jnorm_ret!( $($ret)+ ) ) )
+    };
+    // Variant for callbacks that expect "args -> ret":
+    ( $cb:tt, ( $($args:tt)* ) -> ( $($ret:tt)+ ) ) => {
+        $cb!( ( jnorm_args!( $($args)* ) ) -> ( jnorm_ret!( $($ret)+ ) ) )
     };
 }
 
@@ -553,35 +626,30 @@ macro_rules! unwrap_parens {
 }
 
 // ----- LOOKUP FN -----
-macro_rules! jgen_method_lookup_fn {
+macro_rules! jgen_method_call_fn {
     (
         $this:path,
-        $jname:ident,
         $rname:ident,
         ( $($args:tt)* ),
         ( $($ret:tt)+ )
     ) => {
         paste! {
-            fn [<_ $rname _lookup>](env: &mut Env) -> Result<JMethodID> {
-                let class: &JClass = $this::lookup_class()?;
+            fn [<_ $rname _call>](
+                env: &mut Env,
+                this: &$this,
+                method_id: JMethodID,
+                jnorm_args_then!(param_list_from_args, ( $($args)* ))
+            ) -> Result< jnorm_ret_then!(_ret_ty_from_norm, ( $($ret)+ )) > {
+                let jni_args = jnorm_args_then!(build_jni_args_array, ( $($args)* ));
 
-                // Expand normalization at the call site of the helpers.
-                let sig = if any_rust!(
-                    ( jnorm_args!( $($args)* ) ),
-                    ( jnorm_ret!( $($ret)+ ) )
-                ) == 0 {
-                    build_sig_literal!(
-                        ( jnorm_args!( $($args)* ) )
-                        -> ( jnorm_ret!( $($ret)+ ) )
-                    )
-                } else {
-                    build_sig_format!(
-                        ( jnorm_args!( $($args)* ) )
-                        -> ( jnorm_ret!( $($ret)+ ) )
-                    )
-                };
-
-                env.get_method_id(class, stringify!($jname), &sig)
+                let _ = &this;
+                jni_call_check_ex!(
+                    this, v1_1,
+                    jnorm_ret_then!(_call_api_for_ret, ( $($ret)+ )),
+                    obj,
+                    method_id,
+                    &jni_args
+                )
             }
         }
     };
@@ -600,21 +668,21 @@ macro_rules! jgen_method_call_fn {
                 env: &mut Env,
                 this: &$this,
                 method_id: JMethodID,
-                param_list_from_norm!( ( jnorm_args!( $($args)* ) ) )
-            ) -> Result<_ret_ty_from_norm!( jnorm_ret!( $($ret)+ ) )> {
-                // Build the jvalue array
-                let jni_args = build_jni_args_array!( ( jnorm_args!( $($args)* ) ) );
+                jnorm_args_then!(param_list_from_args, ( $($args)* ))
+            ) -> Result< jnorm_ret_then!(_ret_ty_from_norm, ( $($ret)+ )) > {
+                let jni_args = jnorm_args_then!(build_jni_args_array, ( $($args)* ));
 
-                // Choose the correct CallXxxMethodA variant based on return
-                let _ = &this; // silence unused for some linters
-                // Your codebase likely wraps raw calls with a helper macro; we mirror your earlier example:
+                let _ = &this;
+                /*
                 jni_call_check_ex!(
                     this, v1_1,
-                    _call_api_for_ret!( jnorm_ret!( $($ret)+ ) ),
-                    obj, // (your helper macro may use this token for dispatch; adjust if needed)
+                    jnorm_ret_then!(_call_api_for_ret, ( $($ret)+ )),
+                    obj,
                     method_id,
                     &jni_args
                 )
+                */
+                todo!()
             }
         }
     };
