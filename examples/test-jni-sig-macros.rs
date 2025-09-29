@@ -309,7 +309,7 @@ macro_rules! jnorm_type_then {
         $cb!{ ( obj( [ $($acc)+ ] ) as rust( rust_type_for_java_array_default!([ $($acc)+ ]) ) ) $(, $($pass)* )? }
     };
 
-    // ----- Simple Rust ref: &Path -----
+    // ----- Rust reference type like &JObject, &JString etc -----
     ( $cb:tt, ( & $rust:ty ) $(, $($pass:tt)* )? ) => { $cb!{ ( rust( $rust ) ) $(, $($pass)* )? } };
 
     // ----- Java object type -----
@@ -346,6 +346,9 @@ macro_rules! jnorm_type_then {
     ( $cb:tt, ( float )    $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jfloat )   ) $(, $($pass)* )? } };
     ( $cb:tt, ( jdouble )  $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jdouble )  ) $(, $($pass)* )? } };
     ( $cb:tt, ( double )   $(, $($pass:tt)* )? ) => { $cb!{ ( prim( jdouble )  ) $(, $($pass)* )? } };
+
+    // ----- Rust type: JString, JObject, etc. (must come after primitives) -----
+    ( $cb:tt, ( $rust:ty ) $(, $($pass:tt)* )? ) => { $cb!{ ( rust( $rust ) ) $(, $($pass)* )? } };
 
     // ----- Already-normalized (idempotent) -----
     ( $cb:tt, ( prim ( $($p:tt)+ ) ) $(, $($pass:tt)* )? ) => { $cb!( ( prim( $($p)+ ) ) $(, $($pass)* )? ) };
@@ -1081,10 +1084,6 @@ type Result<T> = core::result::Result<T, ()>;
 type JMethodID = ();
 
 #[derive(Default)]
-struct JString;
-#[derive(Default)]
-struct JClass;
-#[derive(Default)]
 struct JFoo;
 #[derive(Default)]
 struct Env;
@@ -1120,15 +1119,6 @@ trait Reference {
     fn as_raw(&self) -> jni::sys::jobject;
 }
 
-impl Reference for JString {
-    fn class_name() -> Cow<'static, str> {
-        Cow::Borrowed("java/lang/String")
-    }
-    fn as_raw(&self) -> jni::sys::jobject {
-        core::ptr::null_mut()
-    }
-}
-
 mod objects {
     use std::borrow::Cow;
 
@@ -1141,7 +1131,26 @@ mod objects {
             core::ptr::null_mut()
         }
     }
-
+    #[derive(Default)]
+    pub struct JClass;
+    impl crate::refs::Reference for JClass {
+        fn class_name() -> Cow<'static, str> {
+            Cow::Borrowed("java/lang/Class")
+        }
+        fn as_raw(&self) -> jni::sys::jobject {
+            core::ptr::null_mut()
+        }
+    }
+    #[derive(Default)]
+    pub struct JString;
+    impl crate::refs::Reference for JString {
+        fn class_name() -> Cow<'static, str> {
+            Cow::Borrowed("java/lang/String")
+        }
+        fn as_raw(&self) -> jni::sys::jobject {
+            core::ptr::null_mut()
+        }
+    }
     pub struct JObjectArray<T>(std::marker::PhantomData<T>);
     impl<T> crate::refs::Reference for JObjectArray<T> {
         fn class_name() -> Cow<'static, str> {
@@ -1152,6 +1161,7 @@ mod objects {
         }
     }
 }
+pub use objects::{JClass, JObject, JObjectArray, JString};
 
 macro_rules! jni_call_check_ex {
     ($this:expr, $ver:ident, $api:ident, $obj:ident, $mid:expr, $args:expr) => {{
@@ -1239,7 +1249,7 @@ jgen_bind_method!(
 jgen_bind_method!(
     this: JFoo,
     javaFunction as rust_function_1,
-    sig: (a: &JString, b: java.lang.String as JString, c: jint) -> void
+    sig: (a: &JString, b: java.lang.String as JString, c: jint) -> jint
 );
 
 jgen_bind_method!(
@@ -1248,4 +1258,33 @@ jgen_bind_method!(
     sig: (a: &JString, b: java.lang.String[], c: jint) -> void
 );
 
+jgen_bind_method!(
+    this: JFoo,
+    javaFunction as rust_function_3,
+    sig: (a: &JString, b: java.lang.String as JString, c: jint) -> JString
+);
+
+jgen_bind_method!(
+    this: JFoo,
+    javaFunction as rust_function_4,
+    sig: (a: &JString, b: java.lang.String as JString, c: jint) -> crate::objects::JString
+);
+
+jgen_bind_method!(
+    this: JFoo,
+    javaFunction as rust_function_5,
+    sig: (a: &JString, b: java.lang.String as JString, c: jint) -> java.lang.String
+);
+
+jgen_bind_method!(
+    this: JFoo,
+    javaFunction as rust_function_6,
+    sig: (a: &JString, b: java.lang.String as JString, c: jint) -> java.lang.String[] as JObjectArray<JString>
+);
+
+jgen_bind_method!(
+    this: JFoo,
+    javaFunction as rust_function_7,
+    sig: (a: &JString, b: java.lang.String[], c: jint[]) -> void
+);
 fn main() {}
