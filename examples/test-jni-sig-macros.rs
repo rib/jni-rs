@@ -985,7 +985,7 @@ macro_rules! _emit_method_call_fn {
                 let jni_args = build_jni_args_array!( ( $( $an : $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ),* ) );
 
                 let _ = &this;
-                /*
+
                 jni_call_check_ex!(
                     this, v1_1,
                     jnorm_ret_then!(_call_api_for_ret, ( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? )),
@@ -993,8 +993,8 @@ macro_rules! _emit_method_call_fn {
                     method_id,
                     &jni_args
                 )
-                */
-                todo!()
+
+                //todo!()
             }
         }
     };
@@ -1136,6 +1136,11 @@ mod objects {
     use std::borrow::Cow;
 
     pub struct JObject;
+    impl AsRef<JObject> for JObject {
+        fn as_ref(&self) -> &JObject {
+            self
+        }
+    }
     impl crate::refs::Reference for JObject {
         fn class_name() -> Cow<'static, str> {
             Cow::Borrowed("java/lang/Object")
@@ -1146,6 +1151,11 @@ mod objects {
     }
     #[derive(Default)]
     pub struct JClass;
+    impl AsRef<JClass> for JClass {
+        fn as_ref(&self) -> &JClass {
+            self
+        }
+    }
     impl crate::refs::Reference for JClass {
         fn class_name() -> Cow<'static, str> {
             Cow::Borrowed("java/lang/Class")
@@ -1156,6 +1166,11 @@ mod objects {
     }
     #[derive(Default)]
     pub struct JString;
+    impl AsRef<JString> for JString {
+        fn as_ref(&self) -> &JString {
+            self
+        }
+    }
     impl crate::refs::Reference for JString {
         fn class_name() -> Cow<'static, str> {
             Cow::Borrowed("java/lang/String")
@@ -1165,6 +1180,11 @@ mod objects {
         }
     }
     pub struct JObjectArray<T>(std::marker::PhantomData<T>);
+    impl<T> AsRef<JObjectArray<T>> for JObjectArray<T> {
+        fn as_ref(&self) -> &JObjectArray<T> {
+            self
+        }
+    }
     impl<T> crate::refs::Reference for JObjectArray<T> {
         fn class_name() -> Cow<'static, str> {
             Cow::Borrowed("[Ljava/lang/Object;")
@@ -1174,6 +1194,11 @@ mod objects {
         }
     }
     pub struct JPrimitiveArray<T>(std::marker::PhantomData<T>);
+    impl<T> AsRef<JPrimitiveArray<T>> for JPrimitiveArray<T> {
+        fn as_ref(&self) -> &JPrimitiveArray<T> {
+            self
+        }
+    }
     impl<T> crate::refs::Reference for JPrimitiveArray<T> {
         fn class_name() -> Cow<'static, str> {
             Cow::Borrowed("[I") // Simplified - normally would depend on T
@@ -1301,21 +1326,44 @@ jgen_bind_method!(
 jgen_bind_method!(
     this: JFoo,
     javaFunction as rust_function_6,
+    sig: (a: &JString, b: java.lang.String as JString, c: jint) -> java.lang.String[]
+);
+jgen_bind_method!(
+    this: JFoo,
+    javaFunction as rust_function_7,
     sig: (a: &JString, b: java.lang.String as JString, c: jint) -> java.lang.String[] as JObjectArray<JString>
 );
 
 jgen_bind_method!(
     this: JFoo,
-    javaFunction as rust_function_7,
+    javaFunction as rust_function_8,
     sig: (a: &JString, b: java.lang.String[], c: jint[]) -> void
 );
 fn main() {
+    /*
+    TODO:
+    - Add support multi-dimensional primitive arrays (e.g. int[][]) mapping to `JObjectArray<JPrimitiveArray<jint>>`
+    - Output only one literal or format signature without a runtime if statement.
+    - _call function should take a shared `&Env` if returning a primitive type or void.
+    - hookup JNI sys calls
+     */
+
     // Test that primitive arrays now parse correctly
     println!("Primitive array descriptors:");
     println!("jint[] -> {}", jdesc_of!(jint[]));
     println!("jbyte[] -> {}", jdesc_of!(jbyte[]));
     println!("jchar[] -> {}", jdesc_of!(jchar[]));
 
-    // Test that the jgen_bind_method macro for rust_function_7 compiled successfully
-    println!("Successfully parsed primitive array arguments in rust_function_7!");
+    let foo = JFoo::default();
+    let mut env = Env::default();
+    let method_7 = _rust_function_7_lookup(&mut env).unwrap();
+    let ret = _rust_function_6_call(
+        &mut env,
+        &foo,
+        method_7,
+        &JString::default(),
+        &JString::default(),
+        42,
+    )
+    .unwrap();
 }
