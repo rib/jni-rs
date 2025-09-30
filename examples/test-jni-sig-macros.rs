@@ -1,6 +1,43 @@
 // Import the `paste!` macro
 use paste::paste;
 
+// ---- BEGIN: copy of JNI call macros from src/macros.rs ----
+
+/// Directly calls a Env FFI function, nothing else
+///
+/// # Safety
+///
+/// When calling any function added after JNI 1.1 you must know that it's valid
+/// for the current JNI version.
+macro_rules! jni_call_unchecked {
+    ( $jnienv:expr, $version:tt, $name:ident $(, $args:expr )*) => {{
+        // Safety: we know that the Env pointer can't be null, since that's
+        // checked in `from_raw()`
+        let env: *mut jni_sys::JNIEnv = $jnienv.get_raw();
+        let interface: *const jni_sys::JNINativeInterface_ = *env;
+        ((*interface).$version.$name)(env $(, $args)*)
+    }};
+}
+
+/// Calls a Env function, then checks for a pending exception
+///
+/// This only checks for an exception, it doesn't clear the exception and so the
+/// exception will be thrown if the native code returns to the JVM.
+///
+/// Returns `Err` if there is a pending exception after the call.
+macro_rules! jni_call_check_ex {
+    ( $jnienv:expr, $version:tt, $name:ident $(, $args:expr )* ) => ({
+        let ret = jni_call_unchecked!($jnienv, $version, $name $(, $args)*);
+        if $jnienv.exception_check() {
+            Err(()) // Simplified error for mock
+        } else {
+            Ok(ret)
+        }
+    })
+}
+
+// ---- END: copy of JNI call macros from src/macros.rs ----
+
 /// Map primitive type to internal descriptor code (e.g., jint -> "I")
 macro_rules! __prim_to_internal {
     (void) => {
@@ -120,10 +157,10 @@ macro_rules! __any_type_to_internal_owned {
 
 // Build the default Rust wrapper type for a Java array of arbitrary dimension.
 // Base cases map a 1D array; recursion wraps further dimensions in JObjectArray<...>.
-macro_rules! rust_type_for_java_array_default {
+macro_rules! __jsig_default_rust_type_for_java_array_elem {
     // recursion: more dimensions
     ( [ [ $($inner:tt)+ ] ] ) => {
-        JObjectArray< rust_type_for_java_array_default!( [ $($inner)+ ] ) >
+        JObjectArray< __jsig_default_rust_type_for_java_array_elem!( [ $($inner)+ ] ) >
     };
 
     // base: 1D primitive arrays
@@ -279,7 +316,7 @@ macro_rules! __jsig_normalize_type_then {
     };
     // Bracket form without `as` (any dimension)
     ( $cb:tt, ( [ $($arr:tt)+ ] ) $(, $($pass:tt)* )? ) => {
-        $cb!{ ( obj( [ $($arr)+ ] ) as rust( rust_type_for_java_array_default!([ $($arr)+ ]) ) ) $(, $($pass)* )? }
+        $cb!{ ( obj( [ $($arr)+ ] ) as rust( __jsig_default_rust_type_for_java_array_elem!([ $($arr)+ ]) ) ) $(, $($pass)* )? }
     };
 
     // Multi-dimensional suffix forms with explicit as clause
@@ -312,31 +349,31 @@ macro_rules! __jsig_normalize_type_then {
     };
     // Multi-dimensional suffix forms (without explicit as clause)
     ( $cb:tt, ( $first:ident $( . $seg:ident )+ $( :: $inner:ident )* [ ] [ ] [ ] ) $(, $($pass:tt)* )? ) => {
-        $cb!{ ( obj( [ [ [ $first $( . $seg )+ $( :: $inner )* ] ] ] ) as rust( rust_type_for_java_array_default!([ [ [ $first $( . $seg )+ $( :: $inner )* ] ] ]) ) ) $(, $($pass)* )? }
+        $cb!{ ( obj( [ [ [ $first $( . $seg )+ $( :: $inner )* ] ] ] ) as rust( __jsig_default_rust_type_for_java_array_elem!([ [ [ $first $( . $seg )+ $( :: $inner )* ] ] ]) ) ) $(, $($pass)* )? }
     };
     ( $cb:tt, ( $first:ident $( . $seg:ident )+ $( :: $inner:ident )* [ ] [ ] ) $(, $($pass:tt)* )? ) => {
-        $cb!{ ( obj( [ [ $first $( . $seg )+ $( :: $inner )* ] ] ) as rust( rust_type_for_java_array_default!([ [ $first $( . $seg )+ $( :: $inner )* ] ]) ) ) $(, $($pass)* )? }
+        $cb!{ ( obj( [ [ $first $( . $seg )+ $( :: $inner )* ] ] ) as rust( __jsig_default_rust_type_for_java_array_elem!([ [ $first $( . $seg )+ $( :: $inner )* ] ]) ) ) $(, $($pass)* )? }
     };
     ( $cb:tt, ( $first:ident $( . $seg:ident )+ $( :: $inner:ident )* [ ] ) $(, $($pass:tt)* )? ) => {
-        $cb!{ ( obj( [ $first $( . $seg )+ $( :: $inner )* ] ) as rust( rust_type_for_java_array_default!([ $first $( . $seg )+ $( :: $inner )* ]) ) ) $(, $($pass)* )? }
+        $cb!{ ( obj( [ $first $( . $seg )+ $( :: $inner )* ] ) as rust( __jsig_default_rust_type_for_java_array_elem!([ $first $( . $seg )+ $( :: $inner )* ]) ) ) $(, $($pass)* )? }
     };
     ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* [ ] [ ] [ ] ) $(, $($pass:tt)* )? ) => {
-        $cb!{ ( obj( [ [ [ . $outer $( :: $inner )* ] ] ] ) as rust( rust_type_for_java_array_default!([ [ [ . $outer $( :: $inner )* ] ] ]) ) ) $(, $($pass)* )? }
+        $cb!{ ( obj( [ [ [ . $outer $( :: $inner )* ] ] ] ) as rust( __jsig_default_rust_type_for_java_array_elem!([ [ [ . $outer $( :: $inner )* ] ] ]) ) ) $(, $($pass)* )? }
     };
     ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* [ ] [ ] ) $(, $($pass:tt)* )? ) => {
-        $cb!{ ( obj( [ [ . $outer $( :: $inner )* ] ] ) as rust( rust_type_for_java_array_default!([ [ . $outer $( :: $inner )* ] ]) ) ) $(, $($pass)* )? }
+        $cb!{ ( obj( [ [ . $outer $( :: $inner )* ] ] ) as rust( __jsig_default_rust_type_for_java_array_elem!([ [ . $outer $( :: $inner )* ] ]) ) ) $(, $($pass)* )? }
     };
     ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* [ ] ) $(, $($pass:tt)* )? ) => {
-        $cb!{ ( obj( [ . $outer $( :: $inner )* ] ) as rust( rust_type_for_java_array_default!([ . $outer $( :: $inner )* ]) ) ) $(, $($pass)* )? }
+        $cb!{ ( obj( [ . $outer $( :: $inner )* ] ) as rust( __jsig_default_rust_type_for_java_array_elem!([ . $outer $( :: $inner )* ]) ) ) $(, $($pass)* )? }
     };
     ( $cb:tt, ( $p:ident [ ] [ ] [ ] ) $(, $($pass:tt)* )? ) => {
-        $cb!{ ( obj( [ [ [ $p ] ] ] ) as rust( rust_type_for_java_array_default!([ [ [ $p ] ] ]) ) ) $(, $($pass)* )? }
+        $cb!{ ( obj( [ [ [ $p ] ] ] ) as rust( __jsig_default_rust_type_for_java_array_elem!([ [ [ $p ] ] ]) ) ) $(, $($pass)* )? }
     };
     ( $cb:tt, ( $p:ident [ ] [ ] ) $(, $($pass:tt)* )? ) => {
-        $cb!{ ( obj( [ [ $p ] ] ) as rust( rust_type_for_java_array_default!([ [ $p ] ]) ) ) $(, $($pass)* )? }
+        $cb!{ ( obj( [ [ $p ] ] ) as rust( __jsig_default_rust_type_for_java_array_elem!([ [ $p ] ]) ) ) $(, $($pass)* )? }
     };
     ( $cb:tt, ( $p:ident [ ] ) $(, $($pass:tt)* )? ) => {
-        $cb!{ ( obj( [ $p ] ) as rust( rust_type_for_java_array_default!([ $p ]) ) ) $(, $($pass)* )? }
+        $cb!{ ( obj( [ $p ] ) as rust( __jsig_default_rust_type_for_java_array_elem!([ $p ]) ) ) $(, $($pass)* )? }
     };
 
 
@@ -402,7 +439,15 @@ macro_rules! __then_expr {
     };
 }
 
-macro_rules! jnorm_ret_then {
+/// Normalize a return type, then invoke a callback macro that expects a normalized type
+///
+/// # Usage
+///
+///  - `__jsig_normalize_ret_then!(@expr CB, ( RetTy ) [, extra tokens...])`
+///  - `__jsig_normalize_ret_then!(@item CB, ( RetTy ) [, extra tokens...])`
+///
+/// Add @expr | @item to control whether the callback emits an expression or items.
+macro_rules! __jsig_normalize_ret_then {
     ( @ expr $cb:tt, ( $($ret:tt)+ ) $(, $($pass:tt)* )? ) => {
         __jsig_normalize_type_then!( __then_expr, ( $($ret)+ ) $(, $cb, $($pass)* )? )
     };
@@ -411,42 +456,40 @@ macro_rules! jnorm_ret_then {
     };
 }
 
-// Normalize an args list, then invoke a callback macro that expects normalized args:
-//   jnorm_args_then!(CB, ( a: TyA, b: TyB, ... ) [, extra tokens...])
-// Add @expr | @item to control whether the callback emits an expression or items.
-macro_rules! jnorm_args_then {
+/// Normalize an args list, then invoke a callback macro that expects normalized args
+///
+/// # Usage
+///
+///  - `__jsig_normalize_args_then!(@expr CB, ( a: TyA, b: TyB, ... ) [, extra tokens...])`
+///  - `__jsig_normalize_args_then!(@item CB, ( a: TyA, b: TyB, ... ) [, extra tokens...])`
+///
+/// Add @expr | @item to control whether the callback emits an expression or items.
+macro_rules! __jsig_normalize_args_then {
     // Explicit context + pass
     ( @ expr $cb:tt, ( $($args:tt)* ), $($pass:tt)+ ) => {
-        jnorm_args_then_munch!( @ with_pass __then_expr, (), ( $cb, $($pass)+ ), $($args)* )
+        __jsig_normalize_args_then_munch!( @ with_pass __then_expr, (), ( $cb, $($pass)+ ), $($args)* )
     };
     ( @ item $cb:tt, ( $($args:tt)* ), $($pass:tt)+ ) => {
-        jnorm_args_then_munch!( @ with_pass __then_item, (), ( $cb, $($pass)+ ), $($args)* );
+        __jsig_normalize_args_then_munch!( @ with_pass __then_item, (), ( $cb, $($pass)+ ), $($args)* );
     };
     // Explicit context, no pass
     ( @ expr $cb:tt, ( $($args:tt)* ) ) => {
-        jnorm_args_then_munch!( @ no_pass __then_expr, (), ( $cb ), $($args)* )
+        __jsig_normalize_args_then_munch!( @ no_pass __then_expr, (), ( $cb ), $($args)* )
     };
     ( @ item $cb:tt, ( $($args:tt)* ) ) => {
-        jnorm_args_then_munch!( @ no_pass __then_item, (), ( $cb ), $($args)* );
-    };
-    // Back-compat: default to expr
-    ( $cb:tt, ( $($args:tt)* ), $($pass:tt)+ ) => {
-        jnorm_args_then!( @ expr $cb, ( $($args)* ), $($pass)+ )
-    };
-    ( $cb:tt, ( $($args:tt)* ) ) => {
-        jnorm_args_then!( @ expr $cb, ( $($args)* ) )
+        __jsig_normalize_args_then_munch!( @ no_pass __then_item, (), ( $cb ), $($args)* );
     };
 }
 
-// Internal helper: consume Java-style suffix-array [] without introducing tt/',' ambiguity.
-macro_rules! __jnorm_arg_suffix {
+/// Helper that consumes a Java-style suffix-array [] without introducing tt/',' ambiguity.
+macro_rules! __jsig_normalize_suffix_array_then {
     // More [] → accumulate and continue
     ( $push:tt, $cb:tt, @ $mode:ident,
       ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident,
       base( $($base:tt)+ ), dims( $($dims:tt)* ),
       [ ] $($after:tt)*
     ) => {
-        __jnorm_arg_suffix!(
+        __jsig_normalize_suffix_array_then!(
             $push, $cb, @ $mode,
             ( $($acc)* ), ( $($pass)* ), $n,
             base( $($base)+ ), dims( $($dims)* [ ] ),
@@ -514,7 +557,7 @@ macro_rules! __jnorm_arg_suffix {
 
 // Internal muncher that uses __jsig_normalize_type_then per argument type and accumulates a normalized list.
 // Signature carries a mode (@ with_pass | @ no_pass) and a "( $pass )" group that is forwarded unchanged.
-macro_rules! jnorm_args_then_munch {
+macro_rules! __jsig_normalize_args_then_munch {
     // End of list (with pass)
     ( @ with_pass $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)+ ) ) => {
         $cb!{ ( $($acc)* ), $($pass)+ }
@@ -532,7 +575,7 @@ macro_rules! jnorm_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            jnorm_args_then_push, ( & [ [ $($inner)+ ] ] ),
+            __jsig_normalize_args_then_push, ( & [ [ $($inner)+ ] ] ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -543,7 +586,7 @@ macro_rules! jnorm_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            jnorm_args_then_push, ( & [ $($inner)+ ] ),
+            __jsig_normalize_args_then_push, ( & [ $($inner)+ ] ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -554,7 +597,7 @@ macro_rules! jnorm_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            jnorm_args_then_push, ( & $rust ),
+            __jsig_normalize_args_then_push, ( & $rust ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -565,7 +608,7 @@ macro_rules! jnorm_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            jnorm_args_then_push, ( [ $($arr)+ ] as $as_ty ),
+            __jsig_normalize_args_then_push, ( [ $($arr)+ ] as $as_ty ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -576,7 +619,7 @@ macro_rules! jnorm_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            jnorm_args_then_push, ( [ $($arr)+ ] ),
+            __jsig_normalize_args_then_push, ( [ $($arr)+ ] ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -587,7 +630,7 @@ macro_rules! jnorm_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            jnorm_args_then_push, ( $first $( . $seg )+ $( :: $inner )* as $as_ty ),
+            __jsig_normalize_args_then_push, ( $first $( . $seg )+ $( :: $inner )* as $as_ty ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -598,7 +641,7 @@ macro_rules! jnorm_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            jnorm_args_then_push, ( $first $( . $seg )+ $( :: $inner )* ),
+            __jsig_normalize_args_then_push, ( $first $( . $seg )+ $( :: $inner )* ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -609,7 +652,7 @@ macro_rules! jnorm_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            jnorm_args_then_push, ( . $outer $( :: $inner )* as $as_ty ),
+            __jsig_normalize_args_then_push, ( . $outer $( :: $inner )* as $as_ty ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -620,7 +663,7 @@ macro_rules! jnorm_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            jnorm_args_then_push, ( . $outer $( :: $inner )* ),
+            __jsig_normalize_args_then_push, ( . $outer $( :: $inner )* ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -631,7 +674,7 @@ macro_rules! jnorm_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            jnorm_args_then_push, ( $p ),
+            __jsig_normalize_args_then_push, ( $p ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -644,8 +687,8 @@ macro_rules! jnorm_args_then_munch {
       $first:ident $( . $seg:ident )+ $( :: $inner:ident )*
       [ ] $($after:tt)*
     ) => {
-        __jnorm_arg_suffix!{
-            jnorm_args_then_push, $cb, @ $mode,
+        __jsig_normalize_suffix_array_then!{
+            __jsig_normalize_args_then_push, $cb, @ $mode,
             ( $($acc)* ), ( $($pass)* ), $n,
             base( $first $( . $seg )+ $( :: $inner )* ), dims(),
             $($after)*
@@ -658,8 +701,8 @@ macro_rules! jnorm_args_then_munch {
       . $outer:ident $( :: $inner:ident )*
       [ ] $($after:tt)*
     ) => {
-        __jnorm_arg_suffix!(
-            jnorm_args_then_push, $cb, @ $mode,
+        __jsig_normalize_suffix_array_then!(
+            __jsig_normalize_args_then_push, $cb, @ $mode,
             ( $($acc)* ), ( $($pass)* ), $n,
             base( . $outer $( :: $inner )* ), dims(),
             $($after)*
@@ -672,8 +715,8 @@ macro_rules! jnorm_args_then_munch {
       $p:ident
       [ ]
     ) => {
-        __jnorm_arg_suffix!{
-            jnorm_args_then_push, $cb, @ $mode,
+        __jsig_normalize_suffix_array_then!{
+            __jsig_normalize_args_then_push, $cb, @ $mode,
             ( $($acc)* ), ( $($pass)* ), $n,
             base( $p ), dims()
         }
@@ -685,8 +728,8 @@ macro_rules! jnorm_args_then_munch {
       $p:ident
       [ ] $($after:tt)+
     ) => {
-        __jnorm_arg_suffix!{
-            jnorm_args_then_push, $cb, @ $mode,
+        __jsig_normalize_suffix_array_then!{
+            __jsig_normalize_args_then_push, $cb, @ $mode,
             ( $($acc)* ), ( $($pass)* ), $n,
             base( $p ), dims(),
             $($after)+
@@ -695,61 +738,18 @@ macro_rules! jnorm_args_then_munch {
 }
 
 // Push one normalized arg into accumulator and continue munching.
-macro_rules! jnorm_args_then_push {
+macro_rules! __jsig_normalize_args_then_push {
     ( ( $($norm:tt)+ ), $cb:tt, @ $mode:ident, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident, $($rest:tt)* ) => {
-        jnorm_args_then_munch!{ @ $mode $cb, ( $($acc)* $n: $($norm)+ , ), ( $($pass)* ), $($rest)* }
+        __jsig_normalize_args_then_munch!{ @ $mode $cb, ( $($acc)* $n: $($norm)+ , ), ( $($pass)* ), $($rest)* }
     };
     ( ( $($norm:tt)+ ), $cb:tt, @ $mode:ident, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident ) => {
-        jnorm_args_then_munch!{ @ $mode $cb, ( $($acc)* $n: $($norm)+ ), ( $($pass)* ) }
-    };
-}
-
-// ---------- helpers: presence of rust(...), building pieces ----------
-macro_rules! _is_rust {
-    ( prim ( $p:ident ) ) => {
-        0
-    };
-    ( obj  ( $($t:tt)* ) as rust ( $($as:tt)+ ) ) => {
-        0
-    };
-    ( rust ( $($t:tt)* ) ) => {
-        1
-    };
-}
-
-// Parameter & return Rust types from normalized forms
-macro_rules! _param_ty_from_norm {
-    ( prim ( void ) ) => {
-        compile_error!("'void' is not a valid parameter type");
-    };
-    ( prim ( $p:ident ) ) => {
-        $crate::sys::$p
-    };
-    ( obj ( $( $j:tt )+ ) as rust ( $as_ty:ty ) ) => {
-        impl AsRef<$as_ty>
-    };
-    ( rust ( $as_ty:ty ) ) => {
-        impl AsRef<$as_ty>
-    };
-}
-macro_rules! _ret_ty_from_norm {
-    ( prim ( void ) ) => {
-        ()
-    };
-    ( prim ( $p:ident ) ) => {
-        $crate::sys::$p
-    };
-    ( obj ( $( $j:tt )+ ) as rust ( $as_ty:ty ) ) => {
-        $as_ty
-    };
-    ( rust ( $as_ty:ty ) ) => {
-        $as_ty
+        __jsig_normalize_args_then_munch!{ @ $mode $cb, ( $($acc)* $n: $($norm)+ ), ( $($pass)* ) }
     };
 }
 
 // Build signature (literal vs format) for NORMALIZED args/ret.
 
-macro_rules! build_sig_literal {
+macro_rules! __jsig_emit_sig_literal {
     ( ( $( $n:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* )
       -> ( $rk:ident ( $($rt:tt)* ) $( as rust ( $($ret_as:tt)+ ) )? )
     ) => {
@@ -762,7 +762,7 @@ macro_rules! build_sig_literal {
         ))
     };
 }
-macro_rules! build_sig_format {
+macro_rules! __jsig_emit_sig_dynamic_owned {
     ( ( $( $n:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* )
       -> ( $rk:ident ( $($rt:tt)* ) $( as rust ( $($ret_as:tt)+ ) )? )
     ) => {
@@ -830,39 +830,27 @@ macro_rules! _lookup_sig_from_norm_check_ret {
 // Given normalized args and ret, produce the final signature expr
 macro_rules! _lookup_sig_from_norm {
     ( ( $($nargs:tt)* ), ( $($nret:tt)* ) ) => {
-        _lookup_sig_from_norm_check_args!( ( $($nargs)* ), ( $($nret)* ), build_sig_literal, build_sig_format, ( $($nargs)* ) )
+        _lookup_sig_from_norm_check_args!( ( $($nargs)* ), ( $($nret)* ), __jsig_emit_sig_literal, __jsig_emit_sig_dynamic_owned, ( $($nargs)* ) )
     };
 }
 
 // Glue: normalize ret next
-macro_rules! _lookup_sig_emit {
+macro_rules! __jsig_emit_sig_cow__check_args_shim {
     // Accept grouped normalized return
     ( ( $($norm_ret:tt)+ ), ( $($norm_args:tt)* ) ) => {
         _lookup_sig_from_norm!( ( $($norm_args)* ), ( $($norm_ret)+ ) )
     };
 }
-macro_rules! _lookup_sig_from_norm_args {
+macro_rules! __jsig_emit_sig_cow {
     ( ( $($norm_args:tt)* ), ( $($raw_ret:tt)+ ) ) => {
-        jnorm_ret_then!( @ expr _lookup_sig_emit, ( $($raw_ret)+ ), ( $($norm_args)* ) )
+        __jsig_normalize_ret_then!( @ expr __jsig_emit_sig_cow__check_args_shim, ( $($raw_ret)+ ), ( $($norm_args)* ) )
     };
 }
 
-// ----- Convert an argument expression to a `jvalue` (by normalized kind) -----
-
-// Strip leading & from a type so we can call Reference::as_raw on the referent
-macro_rules! strip_ref_ty {
-    ( & $inner:ty ) => {
-        $inner
-    };
-    ( $t:ty ) => {
-        $t
-    };
-}
-
-// Get a `jobject` handle from a reference-y Rust wrapper (type can include &)
+/// Get a raw `jobject` handle from a `Reference` Rust wrapper
 macro_rules! __jsig_obj_reference_as_raw {
     ( $ty:ty, $expr:expr ) => {{
-        <strip_ref_ty!($ty) as $crate::refs::Reference>::as_raw(($expr).as_ref())
+        <$ty as $crate::refs::Reference>::as_raw(($expr).as_ref())
     }};
 }
 
@@ -931,63 +919,37 @@ macro_rules! __jsig_args_to_jvalue_array {
     }};
 }
 
-// ----- LOOKUP FN -----
-// Normalize args/ret before calling any_rust/build_sig_*
-macro_rules! jgen_method_lookup_fn {
-    (
-        $this:path,
-        $jname:ident,
-        $rname:ident,
-        ( $($args:tt)* ),
-        ( $($ret:tt)+ )
-    ) => {
-        paste! {
-            fn [<_ $rname _lookup>](env: &mut Env) -> Result<JMethodID> {
-                let class: &JClass = $this::lookup_class()?;
-
-                let sig = jnorm_args_then!( @expr _lookup_sig_from_norm_args, ( $($args)* ), ( $($ret)+ ) );
-
-                env.get_method_id(class, stringify!($jname), &sig)
-            }
-        }
+// Parameter & return Rust types from normalized forms
+macro_rules! __jgen_emit_rust_method_arg_type {
+    ( prim ( void ) ) => {
+        compile_error!("'void' is not a valid parameter type");
+    };
+    ( prim ( $p:ident ) ) => {
+        $crate::sys::$p
+    };
+    ( obj ( $( $j:tt )+ ) as rust ( $as_ty:ty ) ) => {
+        impl AsRef<$as_ty>
+    };
+    ( rust ( $as_ty:ty ) ) => {
+        impl AsRef<$as_ty>
+    };
+}
+macro_rules! __jgen_emit_rust_return_type {
+    ( prim ( void ) ) => {
+        ()
+    };
+    ( prim ( $p:ident ) ) => {
+        $crate::sys::$p
+    };
+    ( obj ( $( $j:tt )+ ) as rust ( $as_ty:ty ) ) => {
+        $as_ty
+    };
+    ( rust ( $as_ty:ty ) ) => {
+        $as_ty
     };
 }
 
-// ---------- helpers to emit the call fn from normalized args/ret ----------
-/// Directly calls a Env FFI function, nothing else
-///
-/// # Safety
-///
-/// When calling any function added after JNI 1.1 you must know that it's valid
-/// for the current JNI version.
-macro_rules! jni_call_unchecked {
-    ( $jnienv:expr, $version:tt, $name:ident $(, $args:expr )*) => {{
-        // Safety: we know that the Env pointer can't be null, since that's
-        // checked in `from_raw()`
-        let env: *mut jni_sys::JNIEnv = $jnienv.get_raw();
-        let interface: *const jni_sys::JNINativeInterface_ = *env;
-        ((*interface).$version.$name)(env $(, $args)*)
-    }};
-}
-
-/// Calls a Env function, then checks for a pending exception
-///
-/// This only checks for an exception, it doesn't clear the exception and so the
-/// exception will be thrown if the native code returns to the JVM.
-///
-/// Returns `Err` if there is a pending exception after the call.
-macro_rules! jni_call_check_ex {
-    ( $jnienv:expr, $version:tt, $name:ident $(, $args:expr )* ) => ({
-        let ret = jni_call_unchecked!($jnienv, $version, $name $(, $args)*);
-        if $jnienv.exception_check() {
-            Err(()) // Simplified error for mock
-        } else {
-            Ok(ret)
-        }
-    })
-}
-
-macro_rules! _jni_call_from_norm_ret {
+macro_rules! __jgen_emit_jni_sys_call {
     (
         $env:expr, $this:expr, $method_id:expr, $jni_args:expr,
         ( prim ( void ) )
@@ -1166,21 +1128,28 @@ macro_rules! _jni_call_from_norm_ret {
     };
 }
 
-// Helper macro to determine if a normalized return type is primitive (including void)
-macro_rules! _is_primitive_return {
-    ( prim ( $p:ident ) ) => {
-        true
-    };
-    ( obj ( $($rt:tt)+ ) as rust ( $($ret_as:tt)+ ) ) => {
-        false
-    };
-    ( rust ( $($ret_as:tt)+ ) ) => {
-        false
+macro_rules! __jgen_emit_lookup_method_fn {
+    (
+        $this:path,
+        $jname:ident,
+        $rname:ident,
+        ( $($args:tt)* ),
+        ( $($ret:tt)+ )
+    ) => {
+        paste! {
+            fn [<_ $rname _lookup>](env: &mut Env) -> Result<JMethodID> {
+                let class: &JClass = $this::lookup_class()?;
+
+                let sig = __jsig_normalize_args_then!( @expr __jsig_emit_sig_cow, ( $($args)* ), ( $($ret)+ ) );
+
+                env.get_method_id(class, stringify!($jname), &sig)
+            }
+        }
     };
 }
 
 // Final emitter: we now have normalized args and ret; generate the whole fn
-macro_rules! _emit_method_call_fn {
+macro_rules! __jgen_emit_call_method_fn__with_norm_args_ret {
     (
         $envType:ty,
         $this:path,
@@ -1193,11 +1162,11 @@ macro_rules! _emit_method_call_fn {
                 env: $envType,
                 this: &$this,
                 method_id: JMethodID,
-                $( $an: _param_ty_from_norm!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ) ),*
-            ) -> Result< _ret_ty_from_norm!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? ) > {
+                $( $an: __jgen_emit_rust_method_arg_type!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ) ),*
+            ) -> Result< __jgen_emit_rust_return_type!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? ) > {
                 let jni_args = __jsig_args_to_jvalue_array!( ( $( $an : $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ),* ) );
 
-                _jni_call_from_norm_ret!{
+                __jgen_emit_jni_sys_call!{
                     env,
                     this,
                     method_id,
@@ -1209,8 +1178,8 @@ macro_rules! _emit_method_call_fn {
     };
 }
 
-// Glue: normalize ret after args are normalized
-macro_rules! _emit_call_fn {
+/// A shim before __jgen_emit_call_method_fn__with_norm_args_ret that determines whether &Env or &mut Env is needed
+macro_rules! __jgen_emit_call_method_fn__with_norm_args_ret__shim {
     // Primitive return types (including void) use &Env
     (
         ( prim ( $($p:tt)+ ) ),
@@ -1218,7 +1187,7 @@ macro_rules! _emit_call_fn {
         $rname:ident,
         ( $( $nargs:tt )* )
     ) => {
-        _emit_method_call_fn!( &Env, $this, $rname, ( $( $nargs )* ), ( prim( $($p)+ ) ) );
+        __jgen_emit_call_method_fn__with_norm_args_ret!( &Env, $this, $rname, ( $( $nargs )* ), ( prim( $($p)+ ) ) );
     };
     // Object return types use &mut Env
     (
@@ -1227,7 +1196,7 @@ macro_rules! _emit_call_fn {
         $rname:ident,
         ( $( $nargs:tt )* )
     ) => {
-        _emit_method_call_fn!( &mut Env, $this, $rname, ( $( $nargs )* ), ( obj( $($rt)+ ) as rust( $($ret_as)+ ) ) );
+        __jgen_emit_call_method_fn__with_norm_args_ret!( &mut Env, $this, $rname, ( $( $nargs )* ), ( obj( $($rt)+ ) as rust( $($ret_as)+ ) ) );
     };
     // Rust return types use &mut Env
     (
@@ -1236,30 +1205,29 @@ macro_rules! _emit_call_fn {
         $rname:ident,
         ( $( $nargs:tt )* )
     ) => {
-        _emit_method_call_fn!( &mut Env, $this, $rname, ( $( $nargs )* ), ( rust( $($ret_as)+ ) ) );
+        __jgen_emit_call_method_fn__with_norm_args_ret!( &mut Env, $this, $rname, ( $( $nargs )* ), ( rust( $($ret_as)+ ) ) );
     };
 }
 
-macro_rules! _emit_call_from_norm_args {
+macro_rules! __jgen_emit_call_method_fn__with_norm_args {
     (
         ( $( $nargs:tt )* ),
         $this:path,
         $rname:ident,
         ( $($raw_ret:tt)+ )
     ) => {
-        jnorm_ret_then!( @ item _emit_call_fn, ( $($raw_ret)+ ), $this, $rname, ( $( $nargs )* ) );
+        __jsig_normalize_ret_then!( @ item __jgen_emit_call_method_fn__with_norm_args_ret__shim, ( $($raw_ret)+ ), $this, $rname, ( $( $nargs )* ) );
     };
 }
 
-// ----- CALL FN (normalize first, then emit) -----
-macro_rules! jgen_method_call_fn {
+macro_rules! __jgen_emit_call_method_fn {
     (
         $this:path,
         $rname:ident,
         ( $($args:tt)* ),
         ( $($ret:tt)+ )
     ) => {
-        jnorm_args_then!( @item _emit_call_from_norm_args, ( $($args)* ), $this, $rname, ( $($ret)+ ) );
+        __jsig_normalize_args_then!( @item __jgen_emit_call_method_fn__with_norm_args, ( $($args)* ), $this, $rname, ( $($ret)+ ) );
     };
 }
 
@@ -1277,9 +1245,9 @@ outputs:
 fn _rust_method_name_lookup(env: &mut Env) -> Result<JMethodID> {
     let class: &JClass = JFoo::lookup_class()?;
     let sig = if /* all literal */ {
-        build_sig_literal!((a: rust(&JString) as &JString, b: obj(java.lang.String) as JString, c: prim(jint) as jint) -> (prim(void) as void))
+        __jsig_emit_sig_literal!((a: rust(&JString) as &JString, b: obj(java.lang.String) as JString, c: prim(jint) as jint) -> (prim(void) as void))
     } else {
-        build_sig_format!((a: rust(&JString) as &JString, b: obj(java.lang.String) as JString, c: prim(jint) as jint) -> (prim(void) as void))
+        __jsig_emit_sig_dynamic_owned!((a: rust(&JString) as &JString, b: obj(java.lang.String) as JString, c: prim(jint) as jint) -> (prim(void) as void))
     };
     // Use `class`, `sig`, and the method name to look up the method ID
     env.get_method_id(class, "javaMethodName", &sig)
@@ -1297,14 +1265,14 @@ macro_rules! jgen_bind_method {
         sig: ( $($args:tt)* ) -> $($rty:tt)+
     ) => {
 
-        jgen_method_lookup_fn!(
+        __jgen_emit_lookup_method_fn!(
             $this,
             $jname,
             $rname,
             ( $($args)* ),
             ( $($rty)+ )
         );
-        jgen_method_call_fn!(
+        __jgen_emit_call_method_fn!(
             $this,
             $rname,
             ( $($args)* ),
@@ -1586,7 +1554,7 @@ jgen_bind_method!(
 macro_rules! print_jni_sig_for {
     ( ( $($args:tt)* ) -> $($ret:tt)+ ) => {
         {
-            let sig = jnorm_args_then!( @expr _lookup_sig_from_norm_args, ( $($args)* ), ( $($ret)+ ) );
+            let sig = __jsig_normalize_args_then!( @expr __jsig_emit_sig_cow, ( $($args)* ), ( $($ret)+ ) );
             println!("Signature: ({}) -> {} = {}",
                 stringify!($($args)*),
                 stringify!($($ret)+),
