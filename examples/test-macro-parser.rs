@@ -141,7 +141,7 @@ macro_rules! __drt__emit_with_api {
             fn get() -> Self {
                 println!("Generated API for type: {}", stringify!($Type));
                 println!("Class: {}", $Class);
-                println!("Raw type: {}", stringify!($crate::sys::$RawTy));
+                println!("Raw type: {}", stringify!($RawTy));
                 println!("Init tokens: {}", stringify!($Init));
                 println!("Aliases: [{}]", stringify!($($Aliases)*));
                 println!("Methods: {{ {} }}", stringify!($($Methods)*));
@@ -285,137 +285,367 @@ macro_rules! __def_ref_emit {
     };
 }
 
+// Order-agnostic extractor/builder with defaults
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __def_ref_extract {
-    // Base case: no more pairs to process, emit with current values
-    ([] { $($result:tt)* }) => {
-        $crate::__def_ref_emit! { $($result)* }
-    };
+macro_rules! __def_ref_pick_type {
+    ([(type, $Type:ident) $($rest:tt)*]) => { $Type };
+    ([$head:tt $($rest:tt)*]) => { $crate::__def_ref_pick_type!([$($rest)*]) };
+    ([]) => { compile_error!("define_reference_type!: missing required `type` field") };
+}
 
-    // Extract type - found at start of list
-    ([(type, $value:ident) $($rest:tt)*] {
-        type = $old:ident, $($other:tt)*
-    }) => {
-        $crate::__def_ref_extract! {
-            [$($rest)*]
-            { type = $value, $($other)* }
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __def_ref_pick_class {
+    ([(class, $Class:expr) $($rest:tt)*]) => { $Class };
+    ([$head:tt $($rest:tt)*]) => { $crate::__def_ref_pick_class!([$($rest)*]) };
+    ([]) => { compile_error!("define_reference_type!: missing required `class` field") };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __def_ref_build {
+    (
+        // required
+        pairs = [$($pairs:tt)*],
+        type = $Type:ident,
+        class = $Class:expr,
+        // optional with defaults
+        raw = $Raw:ident,
+        api = $Api:ident,
+        init = __drt_Closure($Init:tt),
+        init_with_loader = __drt_Closure($InitWithLoader:tt),
+        aliases = [$($Aliases:tt)*],
+        methods = {$($Methods:tt)*},
+        static_methods = {$($StaticMethods:tt)*},
+        fields = {$($Fields:tt)*},
+        static_fields = {$($StaticFields:tt)*},
+        // cursor
+        cursor = []
+    ) => {
+        $crate::__def_ref_emit! {
+            type = $Type,
+            class = $Class,
+            raw = $Raw,
+            api = $Api,
+            init = __drt_Closure($Init),
+            init_with_loader = __drt_Closure($InitWithLoader),
+            aliases = [$($Aliases)*],
+            methods = {$($Methods)*},
+            static_methods = {$($StaticMethods)*},
+            fields = {$($Fields)*},
+            static_fields = {$($StaticFields)*},
         }
     };
-
-    // Skip unknown pairs for now
-    ([($key:tt, $val:tt) $($rest:tt)*] { $($result:tt)* }) => {
-        $crate::__def_ref_extract! {
-            [$($rest)*]
-            { $($result)* }
+    (
+        pairs = [$($pairs:tt)*],
+        type = $Type:ident,
+        class = $Class:expr,
+        raw = $Raw:ident,
+        api = $Api:ident,
+        init = __drt_Closure($Init:tt),
+        init_with_loader = __drt_Closure($InitWithLoader:tt),
+        aliases = [$($Aliases:tt)*],
+        methods = {$($Methods:tt)*},
+        static_methods = {$($StaticMethods:tt)*},
+        fields = {$($Fields:tt)*},
+        static_fields = {$($StaticFields:tt)*},
+        cursor = [(raw, $NewRaw:ident) $($rest:tt)*]
+    ) => {
+        $crate::__def_ref_build! {
+            pairs = [$($pairs)*],
+            type = $Type,
+            class = $Class,
+            raw = $NewRaw,
+            api = $Api,
+            init = __drt_Closure($Init),
+            init_with_loader = __drt_Closure($InitWithLoader),
+            aliases = [$($Aliases)*],
+            methods = {$($Methods)*},
+            static_methods = {$($StaticMethods)*},
+            fields = {$($Fields)*},
+            static_fields = {$($StaticFields)*},
+            cursor = [$($rest)*]
         }
     };
-
-    // Extract class - found at start of list
-    ([(class, $value:expr) $($rest:tt)*] {
-        class = $old:expr, $($other:tt)*
-    }) => {
-        $crate::__def_ref_extract! {
-            [$($rest)*]
-            { class = $value, $($other)* }
+    (
+        pairs = [$($pairs:tt)*],
+        type = $Type:ident,
+        class = $Class:expr,
+        raw = $Raw:ident,
+        api = $Api:ident,
+        init = __drt_Closure($Init:tt),
+        init_with_loader = __drt_Closure($InitWithLoader:tt),
+        aliases = [$($Aliases:tt)*],
+        methods = {$($Methods:tt)*},
+        static_methods = {$($StaticMethods:tt)*},
+        fields = {$($Fields:tt)*},
+        static_fields = {$($StaticFields:tt)*},
+        cursor = [(api, $NewApi:ident) $($rest:tt)*]
+    ) => {
+        $crate::__def_ref_build! {
+            pairs = [$($pairs)*],
+            type = $Type,
+            class = $Class,
+            raw = $Raw,
+            api = $NewApi,
+            init = __drt_Closure($Init),
+            init_with_loader = __drt_Closure($InitWithLoader),
+            aliases = [$($Aliases)*],
+            methods = {$($Methods)*},
+            static_methods = {$($StaticMethods)*},
+            fields = {$($Fields)*},
+            static_fields = {$($StaticFields)*},
+            cursor = [$($rest)*]
         }
     };
-
-    // Extract raw - found at start of list
-    ([(raw, $value:ident) $($rest:tt)*] {
-        raw = $old:ident, $($other:tt)*
-    }) => {
-        $crate::__def_ref_extract! {
-            [$($rest)*]
-            { raw = $value, $($other)* }
+    (
+        pairs = [$($pairs:tt)*],
+        type = $Type:ident,
+        class = $Class:expr,
+        raw = $Raw:ident,
+        api = $Api:ident,
+        init = __drt_Closure($Init:tt),
+        init_with_loader = __drt_Closure($InitWithLoader:tt),
+        aliases = [$($Aliases:tt)*],
+        methods = {$($Methods:tt)*},
+        static_methods = {$($StaticMethods:tt)*},
+        fields = {$($Fields:tt)*},
+        static_fields = {$($StaticFields:tt)*},
+        cursor = [(init, (__drt_Closure(($NewInit:tt)))) $($rest:tt)*]
+    ) => {
+        $crate::__def_ref_build! {
+            pairs = [$($pairs)*],
+            type = $Type,
+            class = $Class,
+            raw = $Raw,
+            api = $Api,
+            init = __drt_Closure($NewInit),
+            init_with_loader = __drt_Closure($InitWithLoader),
+            aliases = [$($Aliases)*],
+            methods = {$($Methods)*},
+            static_methods = {$($StaticMethods)*},
+            fields = {$($Fields)*},
+            static_fields = {$($StaticFields)*},
+            cursor = [$($rest)*]
         }
     };
-
-    // Extract api - found at start of list
-    ([(api, $value:ident) $($rest:tt)*] {
-        api = $old:ident, $($other:tt)*
-    }) => {
-        $crate::__def_ref_extract! {
-            [$($rest)*]
-            { api = $value, $($other)* }
+    (
+        pairs = [$($pairs:tt)*],
+        type = $Type:ident,
+        class = $Class:expr,
+        raw = $Raw:ident,
+        api = $Api:ident,
+        init = __drt_Closure($Init:tt),
+        init_with_loader = __drt_Closure($InitWithLoader:tt),
+        aliases = [$($Aliases:tt)*],
+        methods = {$($Methods:tt)*},
+        static_methods = {$($StaticMethods:tt)*},
+        fields = {$($Fields:tt)*},
+        static_fields = {$($StaticFields:tt)*},
+        cursor = [(init_with_loader, (__drt_Closure(($NewInitWithLoader:tt)))) $($rest:tt)*]
+    ) => {
+        $crate::__def_ref_build! {
+            pairs = [$($pairs)*],
+            type = $Type,
+            class = $Class,
+            raw = $Raw,
+            api = $Api,
+            init = __drt_Closure($Init),
+            init_with_loader = __drt_Closure($NewInitWithLoader),
+            aliases = [$($Aliases)*],
+            methods = {$($Methods)*},
+            static_methods = {$($StaticMethods:tt)*},
+            fields = {$($Fields)*},
+            static_fields = {$($StaticFields)*},
+            cursor = [$($rest)*]
         }
     };
-
-    // Extract init - found at start of list (wrapped with extra parentheses around __drt_Closure)
-    ([(init, ($value:tt)) $($rest:tt)*] {
-        init = __drt_Closure($old:tt), $($other:tt)*
-    }) => {
-        $crate::__def_ref_extract! {
-            [$($rest)*]
-            { init = $value, $($other)* }
+    (
+        pairs = [$($pairs:tt)*],
+        type = $Type:ident,
+        class = $Class:expr,
+        raw = $Raw:ident,
+        api = $Api:ident,
+        init = __drt_Closure($Init:tt),
+        init_with_loader = __drt_Closure($InitWithLoader:tt),
+        aliases = [$($Aliases:tt)*],
+        methods = {$($Methods:tt)*},
+        static_methods = {$($StaticMethods:tt)*},
+        fields = {$($Fields:tt)*},
+        static_fields = {$($StaticFields:tt)*},
+        cursor = [(aliases, [$($NewAliases:tt)*]) $($rest:tt)*]
+    ) => {
+        $crate::__def_ref_build! {
+            pairs = [$($pairs)*],
+            type = $Type,
+            class = $Class,
+            raw = $Raw,
+            api = $Api,
+            init = __drt_Closure($Init),
+            init_with_loader = __drt_Closure($InitWithLoader),
+            aliases = [$($NewAliases)*],
+            methods = {$($Methods:tt)*},
+            static_methods = {$($StaticMethods:tt)*},
+            fields = {$($Fields:tt)*},
+            static_fields = {$($StaticFields:tt)*},
+            cursor = [$($rest)*]
         }
     };
-
-    // Extract init_with_loader - found at start of list (wrapped with extra parentheses around __drt_Closure)
-    ([(init_with_loader, ($value:tt)) $($rest:tt)*] {
-        init_with_loader = __drt_Closure($old:tt), $($other:tt)*
-    }) => {
-        $crate::__def_ref_extract! {
-            [$($rest)*]
-            { init_with_loader = $value, $($other)* }
+    (
+        pairs = [$($pairs:tt)*],
+        type = $Type:ident,
+        class = $Class:expr,
+        raw = $Raw:ident,
+        api = $Api:ident,
+        init = __drt_Closure($Init:tt),
+        init_with_loader = __drt_Closure($InitWithLoader:tt),
+        aliases = [$($Aliases:tt)*],
+        methods = {$($Methods:tt)*},
+        static_methods = {$($StaticMethods:tt)*},
+        fields = {$($Fields:tt)*},
+        static_fields = {$($StaticFields:tt)*},
+        cursor = [(methods, {$($NewMethods:tt)*}) $($rest:tt)*]
+    ) => {
+        $crate::__def_ref_build! {
+            pairs = [$($pairs)*],
+            type = $Type,
+            class = $Class,
+            raw = $Raw,
+            api = $Api,
+            init = __drt_Closure($Init),
+            init_with_loader = __drt_Closure($InitWithLoader),
+            aliases = [$($Aliases)*],
+            methods = {$($NewMethods)*},
+            static_methods = {$($StaticMethods)*},
+            fields = {$($Fields:tt)*},
+            static_fields = {$($StaticFields:tt)*},
+            cursor = [$($rest)*]
         }
     };
-
-    // Extract aliases
-    ([(aliases, [$($value:tt)*])$($rest:tt)*] {
-        aliases = [$($old:tt)*], $($other:tt)*
-    }) => {
-        $crate::__def_ref_extract! {
-            [$($rest)*]
-            { aliases = [$($value)*], $($other)* }
+    (
+        pairs = [$($pairs:tt)*],
+        type = $Type:ident,
+        class = $Class:expr,
+        raw = $Raw:ident,
+        api = $Api:ident,
+        init = __drt_Closure($Init:tt),
+        init_with_loader = __drt_Closure($InitWithLoader:tt),
+        aliases = [$($Aliases:tt)*],
+        methods = {$($Methods:tt)*},
+        static_methods = {$($StaticMethods:tt)*},
+        fields = {$($Fields:tt)*},
+        static_fields = {$($StaticFields:tt)*},
+        cursor = [(static_methods, {$($NewStaticMethods:tt)*}) $($rest:tt)*]
+    ) => {
+        $crate::__def_ref_build! {
+            pairs = [$($pairs)*],
+            type = $Type,
+            class = $Class,
+            raw = $Raw,
+            api = $Api,
+            init = __drt_Closure($Init),
+            init_with_loader = __drt_Closure($InitWithLoader),
+            aliases = [$($Aliases)*],
+            methods = {$($Methods:tt)*},
+            static_methods = {$($NewStaticMethods)*},
+            fields = {$($Fields:tt)*},
+            static_fields = {$($StaticFields:tt)*},
+            cursor = [$($rest)*]
         }
     };
-
-    // Extract methods
-    ([(methods, {$($value:tt)*})$($rest:tt)*] {
-        methods = {$($old:tt)*}, $($other:tt)*
-    }) => {
-        $crate::__def_ref_extract! {
-            [$($rest)*]
-            { methods = {$($value)*}, $($other)* }
+    (
+        pairs = [$($pairs:tt)*],
+        type = $Type:ident,
+        class = $Class:expr,
+        raw = $Raw:ident,
+        api = $Api:ident,
+        init = __drt_Closure($Init:tt),
+        init_with_loader = __drt_Closure($InitWithLoader:tt),
+        aliases = [$($Aliases:tt)*],
+        methods = {$($Methods:tt)*},
+        static_methods = {$($StaticMethods:tt)*},
+        fields = {$($Fields:tt)*},
+        static_fields = {$($StaticFields:tt)*},
+        cursor = [(fields, {$($NewFields:tt)*}) $($rest:tt)*]
+    ) => {
+        $crate::__def_ref_build! {
+            pairs = [$($pairs)*],
+            type = $Type,
+            class = $Class,
+            raw = $Raw,
+            api = $Api,
+            init = __drt_Closure($Init),
+            init_with_loader = __drt_Closure($InitWithLoader),
+            aliases = [$($Aliases)*],
+            methods = {$($Methods:tt)*},
+            static_methods = {$($StaticMethods:tt)*},
+            fields = {$($NewFields)*},
+            static_fields = {$($StaticFields:tt)*},
+            cursor = [$($rest)*]
         }
     };
-
-    // Extract static_methods
-    ([(static_methods, {$($value:tt)*})$($rest:tt)*] {
-        static_methods = {$($old:tt)*}, $($other:tt)*
-    }) => {
-        $crate::__def_ref_extract! {
-            [$($rest)*]
-            { static_methods = {$($value)*}, $($other)* }
+    (
+        pairs = [$($pairs:tt)*],
+        type = $Type:ident,
+        class = $Class:expr,
+        raw = $Raw:ident,
+        api = $Api:ident,
+        init = __drt_Closure($Init:tt),
+        init_with_loader = __drt_Closure($InitWithLoader:tt),
+        aliases = [$($Aliases:tt)*],
+        methods = {$($Methods:tt)*},
+        static_methods = {$($StaticMethods:tt)*},
+        fields = {$($Fields:tt)*},
+        static_fields = {$($StaticFields:tt)*},
+        cursor = [(static_fields, {$($NewStaticFields:tt)*}) $($rest:tt)*]
+    ) => {
+        $crate::__def_ref_build! {
+            pairs = [$($pairs)*],
+            type = $Type,
+            class = $Class,
+            raw = $Raw,
+            api = $Api,
+            init = __drt_Closure($Init),
+            init_with_loader = __drt_Closure($InitWithLoader),
+            aliases = [$($Aliases)*],
+            methods = {$($Methods:tt)*},
+            static_methods = {$($StaticMethods:tt)*},
+            fields = {$($Fields:tt)*},
+            static_fields = {$($NewStaticFields:tt)*},
+            cursor = [$($rest)*]
         }
     };
-
-    // Extract fields
-    ([(fields, {$($value:tt)*})$($rest:tt)*] {
-        fields = {$($old:tt)*}, $($other:tt)*
-    }) => {
-        $crate::__def_ref_extract! {
-            [$($rest)*]
-            { fields = {$($value)*}, $($other)* }
-        }
-    };
-
-    // Extract static_fields
-    ([(static_fields, {$($value:tt)*})$($rest:tt)*] {
-        static_fields = {$($old:tt)*}, $($other:tt)*
-    }) => {
-        $crate::__def_ref_extract! {
-            [$($rest)*]
-            { static_fields = {$($value)*}, $($other)* }
-        }
-    };
-
-    // Skip unknown keys
-    ([($key:tt, $value:tt)$($rest:tt)*] { $($result:tt)* }) => {
-        $crate::__def_ref_extract! {
-            [$($rest)*]
-            { $($result)* }
+    (
+        // skip unknown
+        pairs = [$($pairs:tt)*],
+        type = $Type:ident,
+        class = $Class:expr,
+        raw = $Raw:ident,
+        api = $Api:ident,
+        init = __drt_Closure($Init:tt),
+        init_with_loader = __drt_Closure($InitWithLoader:tt),
+        aliases = [$($Aliases:tt)*],
+        methods = {$($Methods:tt)*},
+        static_methods = {$($StaticMethods:tt)*},
+        fields = {$($Fields:tt)*},
+        static_fields = {$($StaticFields:tt)*},
+        cursor = [$head:tt $($rest:tt)*]
+    ) => {
+        $crate::__def_ref_build! {
+            pairs = [$($pairs)*],
+            type = $Type,
+            class = $Class,
+            raw = $Raw,
+            api = $Api,
+            init = __drt_Closure($Init),
+            init_with_loader = __drt_Closure($InitWithLoader),
+            aliases = [$($Aliases)*],
+            methods = {$($Methods:tt)*},
+            static_methods = {$($StaticMethods:tt)*},
+            fields = {$($Fields:tt)*},
+            static_fields = {$($StaticFields:tt)*},
+            cursor = [$($rest)*]
         }
     };
 }
@@ -423,142 +653,158 @@ macro_rules! __def_ref_extract {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __def_ref_parse {
-    // Done: extract final values and emit
-    (@parse [$($pairs:tt)*]) => {
-        $crate::__def_ref_extract! {
-            [$($pairs)*]
-            {
-                type = __PLACEHOLDER__,
-                class = "__PLACEHOLDER__",
-                raw = jobject,
-                api = __auto_api,
-                init = __drt_Closure(()),
-                init_with_loader = __drt_Closure(()),
-                aliases = [],
-                methods = {},
-                static_methods = {},
-                fields = {},
-                static_fields = {},
-            }
+    // Done: emit with resolved required fields and accumulated option pairs
+    (@finish type = ($Type:ident), class = ($Class:expr), pairs = [$($pairs:tt)*]) => {
+        $crate::__def_ref_build! {
+            pairs = [$($pairs)*],
+            type = $Type,
+            class = $Class,
+            // defaults
+            raw = jobject,
+            api = __auto_api,
+            init = __drt_Closure(()),
+            init_with_loader = __drt_Closure(()),
+            aliases = [],
+            methods = {},
+            static_methods = {},
+            fields = {},
+            static_fields = {},
+            cursor = [$($pairs)*]
         }
     };
-
-
+    // Error cases
+    (@finish type = (), class = ($Class:expr), pairs = [$($pairs:tt)*]) => {
+        compile_error!("define_reference_type!: missing required `type` field")
+    };
+    (@finish type = ($Type:ident), class = (), pairs = [$($pairs:tt)*]) => {
+        compile_error!("define_reference_type!: missing required `class` field")
+    };
+    (@finish type = (), class = (), pairs = [$($pairs:tt)*]) => {
+        compile_error!("define_reference_type!: missing required `type` and `class` fields")
+    };
 
     // Finished parsing tokens, move to extraction
-    (@parse_tokens [$($acc:tt)*]) => {
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] }) => {
         $crate::__def_ref_parse! {
-            @parse [$($acc)*]
+            @finish type = $Type, class = $Class, pairs = [$($acc)*]
         }
     };
 
     // Parse tokens: type = <ident>
-    (@parse_tokens [$($acc:tt)*] type = $value:ident $($rest:tt)*) => {
+    (@parse_tokens { type = (), class = $Class:tt, pairs = [$($acc:tt)*] } type = $value:ident $($rest:tt)*) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (type, $value)] $($rest)*
+            @parse_tokens { type = ($value), class = $Class, pairs = [$($acc)*] } $($rest)*
         }
+    };
+    // If type already set, updating it is an error to keep semantics simple
+    (@parse_tokens { type = ($set:ident), class = $Class:tt, pairs = [$($acc:tt)*] } type = $value:ident $($rest:tt)*) => {
+        compile_error!("define_reference_type!: duplicate `type` key")
     };
 
     // Parse tokens: class = <expr>, with comma
-    (@parse_tokens [$($acc:tt)*] class = $value:expr, $($rest:tt)*) => {
+    (@parse_tokens { type = $Type:tt, class = (), pairs = [$($acc:tt)*] } class = $value:expr, $($rest:tt)*) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (class, $value)] $($rest)*
+            @parse_tokens { type = $Type, class = ($value), pairs = [$($acc)*] } $($rest)*
         }
     };
-
     // Parse tokens: class = <expr>, no comma (end)
-    (@parse_tokens [$($acc:tt)*] class = $value:expr) => {
+    (@parse_tokens { type = $Type:tt, class = (), pairs = [$($acc:tt)*] } class = $value:expr) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (class, $value)]
+            @parse_tokens { type = $Type, class = ($value), pairs = [$($acc)*] }
         }
+    };
+    // If class already set, error on duplicate
+    (@parse_tokens { type = $Type:tt, class = ($set:expr), pairs = [$($acc:tt)*] } class = $value:expr, $($rest:tt)*) => {
+        compile_error!("define_reference_type!: duplicate `class` key")
+    };
+    (@parse_tokens { type = $Type:tt, class = ($set:expr), pairs = [$($acc:tt)*] } class = $value:expr) => {
+        compile_error!("define_reference_type!: duplicate `class` key")
     };
 
     // Parse tokens: raw = <ident>
-    (@parse_tokens [$($acc:tt)*] raw = $value:ident $($rest:tt)*) => {
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } raw = $value:ident $($rest:tt)*) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (raw, $value)] $($rest)*
+            @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (raw, $value)] } $($rest)*
         }
     };
 
     // Parse tokens: api = <ident>
-    (@parse_tokens [$($acc:tt)*] api = $value:ident $($rest:tt)*) => {
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } api = $value:ident $($rest:tt)*) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (api, $value)] $($rest)*
+            @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (api, $value)] } $($rest)*
         }
     };
 
     // Parse tokens: init = <expr>, with comma - wrap with __drt_Closure to avoid comma ambiguity
-    (@parse_tokens [$($acc:tt)*] init = $value:expr, $($rest:tt)*) => {
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } init = $value:expr, $($rest:tt)*) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (init, (__drt_Closure(($value))))] $($rest)*
+            @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (init, (__drt_Closure(($value))))] } $($rest)*
+        }
+    };
+    // Parse tokens: init = <expr>, no comma (end)
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } init = $value:expr) => {
+        $crate::__def_ref_parse! {
+            @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (init, (__drt_Closure(($value))))] }
         }
     };
 
-    // Parse tokens: init = <expr>, no comma (end) - wrap with __drt_Closure to avoid comma ambiguity
-    (@parse_tokens [$($acc:tt)*] init = $value:expr) => {
+    // Parse tokens: init_with_loader = <expr>, with comma
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } init_with_loader = $value:expr, $($rest:tt)*) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (init, (__drt_Closure(($value))))]
+            @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (init_with_loader, (__drt_Closure(($value))))] } $($rest)*
         }
     };
-
-    // Parse tokens: init_with_loader = <expr>, with comma - wrap with __drt_Closure to avoid comma ambiguity
-    (@parse_tokens [$($acc:tt)*] init_with_loader = $value:expr, $($rest:tt)*) => {
+    // Parse tokens: init_with_loader = <expr>, no comma (end)
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } init_with_loader = $value:expr) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (init_with_loader, (__drt_Closure(($value))))] $($rest)*
-        }
-    };
-
-    // Parse tokens: init_with_loader = <expr>, no comma (end) - wrap with __drt_Closure to avoid comma ambiguity
-    (@parse_tokens [$($acc:tt)*] init_with_loader = $value:expr) => {
-        $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (init_with_loader, (__drt_Closure(($value))))]
+            @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (init_with_loader, (__drt_Closure(($value))))] }
         }
     };
 
     // Parse tokens: as = [aliases]
-    (@parse_tokens [$($acc:tt)*] as = [$($value:tt)*] $($rest:tt)*) => {
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } as = [$($value:tt)*] $($rest:tt)*) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (aliases, [$($value)*])] $($rest)*
+            @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (aliases, [$($value)*])] } $($rest)*
         }
     };
 
     // Parse tokens: methods = {methods}
-    (@parse_tokens [$($acc:tt)*] methods = {$($value:tt)*} $($rest:tt)*) => {
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } methods = {$($value:tt)*} $($rest:tt)*) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (methods, {$($value)*})] $($rest)*
+            @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (methods, {$($value)*})] } $($rest)*
         }
     };
 
     // Parse tokens: static_methods = {static_methods}
-    (@parse_tokens [$($acc:tt)*] static_methods = {$($value:tt)*} $($rest:tt)*) => {
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } static_methods = {$($value:tt)*} $($rest:tt)*) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (static_methods, {$($value)*})] $($rest)*
+            @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (static_methods, {$($value)*})] } $($rest)*
         }
     };
 
     // Parse tokens: fields {fields}
-    (@parse_tokens [$($acc:tt)*] fields {$($value:tt)*} $($rest:tt)*) => {
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } fields {$($value:tt)*} $($rest:tt)*) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (fields, {$($value)*})] $($rest)*
+            @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (fields, {$($value)*})] } $($rest)*
         }
     };
 
     // Parse tokens: static_fields {static_fields}
-    (@parse_tokens [$($acc:tt)*] static_fields {$($value:tt)*} $($rest:tt)*) => {
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } static_fields {$($value:tt)*} $($rest:tt)*) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (static_fields, {$($value)*})] $($rest)*
+            @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (static_fields, {$($value)*})] } $($rest)*
         }
     };
 
     // Parse tokens: Skip commas
-    (@parse_tokens [$($acc:tt)*] , $($rest:tt)*) => {
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } , $($rest:tt)*) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)*] $($rest)*
+            @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)*] } $($rest)*
         }
     };
 
     // Parse tokens: Error on unexpected tokens
-    (@parse_tokens [$($acc:tt)*] $bad:tt $($rest:tt)*) => {
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } $bad:tt $($rest:tt)*) => {
         compile_error!(concat!("Unexpected token in define_reference_type: ", stringify!($bad)));
     };
 
@@ -600,28 +846,28 @@ macro_rules! __def_ref_parse {
     // Append init = <expr>, with comma - wrap with __drt_Closure to avoid comma ambiguity
     (@parse [$($acc:tt)*] init = $value:expr, $($rest:tt)*) => {
         $crate::__def_ref_parse! {
-            @parse [$($acc)* (init, __drt_Closure(($value)))] $($rest)*
+            @parse [$($acc)* (init, (__drt_Closure(($value))))] $($rest)*
         }
     };
 
     // Append init = <expr>, no comma (end) - wrap with __drt_Closure to avoid comma ambiguity
     (@parse [$($acc:tt)*] init = $value:expr) => {
         $crate::__def_ref_parse! {
-            @parse [$($acc)* (init, __drt_Closure(($value)))]
+            @parse [$($acc)* (init, (__drt_Closure(($value))))]
         }
     };
 
     // Append init_with_loader = <expr>, with comma - wrap with __drt_Closure to avoid comma ambiguity
     (@parse [$($acc:tt)*] init_with_loader = $value:expr, $($rest:tt)*) => {
         $crate::__def_ref_parse! {
-            @parse [$($acc)* (init_with_loader, __drt_Closure(($value)))] $($rest)*
+            @parse [$($acc)* (init_with_loader, (__drt_Closure(($value))))] $($rest)*
         }
     };
 
     // Append init_with_loader = <expr>, no comma (end) - wrap with __drt_Closure to avoid comma ambiguity
     (@parse [$($acc:tt)*] init_with_loader = $value:expr) => {
         $crate::__def_ref_parse! {
-            @parse [$($acc)* (init_with_loader, __drt_Closure(($value)))]
+            @parse [$($acc)* (init_with_loader, (__drt_Closure(($value))))]
         }
     };
 
@@ -682,7 +928,7 @@ macro_rules! define_reference_type {
         $(, $($rest:tt)*)?
     ) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [(type, $Type) (class, $Class)] $( $($rest)* )?
+            @parse_tokens { type = ($Type), class = ($Class), pairs = [] } $( $($rest)* )?
         }
     };
 }
