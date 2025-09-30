@@ -1,9 +1,8 @@
 // Import the `paste!` macro
 use paste::paste;
 
-//pub use crate::sys::{jboolean, jbyte, jchar, jdouble, jfloat, jint, jlong, jshort, jvalue};
-
-macro_rules! jprim {
+/// Map primitive type to internal descriptor code (e.g., jint -> "I")
+macro_rules! __prim_to_internal {
     (void) => {
         "V"
     };
@@ -33,14 +32,14 @@ macro_rules! jprim {
     };
 }
 
-// ---------- internal names for Java types ----------
-macro_rules! jname_internal {
+/// Convert a dot-separated package plus `::` separated inner classes to internal form with `/` and `$`
+macro_rules! __java_name_to_internal {
     (. $outer:ident $( :: $inner:ident )* ) => {
         concat!( stringify!($outer) $(, "$", stringify!($inner) )* )
     };
-    ($first:ident . $($rest:tt)+) => { jname_internal!(@accum [$first] $($rest)+) };
+    ($first:ident . $($rest:tt)+) => { __java_name_to_internal!(@accum [$first] $($rest)+) };
     (@accum [$($pkg:ident)+] $next:ident . $($more:tt)+) => {
-        jname_internal!(@accum [$($pkg)+ $next] $($more)+)
+        __java_name_to_internal!(@accum [$($pkg)+ $next] $($more)+)
     };
     (@accum [$($pkg:ident)+] $outer:ident $( :: $inner:ident )* ) => {
         concat!(
@@ -51,78 +50,73 @@ macro_rules! jname_internal {
     };
 }
 
-// ---------- Type → internal descriptor (normalized only) ----------
-// Helpers to render Java names and arrays.
-macro_rules! jdesc_java_name {
-    ( $first:ident . $($rest:tt)+ ) => { concat!("L", jname_internal!($first . $($rest)+), ";") };
-    ( . $outer:ident $( :: $inner:ident )* ) => { concat!("L", jname_internal!(. $outer $( :: $inner )*), ";") };
+/// Convert a dot-separated package plus `::` separated inner classes to internal form with `/` and `$`
+/// and wrap with 'L' and ';' for object types within descriptors.
+macro_rules! __java_obj_to_internal {
+    ( $first:ident . $($rest:tt)+ ) => { concat!("L", __java_name_to_internal!($first . $($rest)+), ";") };
+    ( . $outer:ident $( :: $inner:ident )* ) => { concat!("L", __java_name_to_internal!(. $outer $( :: $inner )*), ";") };
 }
 
-macro_rules! jdesc_java_elem {
-    // Java reference element
-    ( $first:ident . $($rest:tt)+ ) => { jdesc_java_name!($first . $($rest)+) };
-    ( . $outer:ident $( :: $inner:ident )* ) => { jdesc_java_name!(. $outer $( :: $inner )*) };
+/// Maps a Java array element type to its internal descriptor form.
+macro_rules! __java_elem_to_internal {
+    // Java object element
+    ( $first:ident . $($rest:tt)+ ) => { __java_obj_to_internal!($first . $($rest)+) };
+    ( . $outer:ident $( :: $inner:ident )* ) => { __java_obj_to_internal!(. $outer $( :: $inner )*) };
     // Primitive element (canonical)
-    ( jboolean ) => { jprim!(jboolean) };
-    ( jbyte    ) => { jprim!(jbyte)    };
-    ( jchar    ) => { jprim!(jchar)    };
-    ( jshort   ) => { jprim!(jshort)   };
-    ( jint     ) => { jprim!(jint)     };
-    ( jlong    ) => { jprim!(jlong)    };
-    ( jfloat   ) => { jprim!(jfloat)   };
-    ( jdouble  ) => { jprim!(jdouble)  };
+    ( jboolean ) => { __prim_to_internal!(jboolean) };
+    ( jbyte    ) => { __prim_to_internal!(jbyte)    };
+    ( jchar    ) => { __prim_to_internal!(jchar)    };
+    ( jshort   ) => { __prim_to_internal!(jshort)   };
+    ( jint     ) => { __prim_to_internal!(jint)     };
+    ( jlong    ) => { __prim_to_internal!(jlong)    };
+    ( jfloat   ) => { __prim_to_internal!(jfloat)   };
+    ( jdouble  ) => { __prim_to_internal!(jdouble)  };
     // Primitive aliases
-    ( boolean  ) => { jprim!(jboolean) };
-    ( byte     ) => { jprim!(jbyte)    };
-    ( char     ) => { jprim!(jchar)    };
-    ( short    ) => { jprim!(jshort)   };
-    ( int      ) => { jprim!(jint)     };
-    ( long     ) => { jprim!(jlong)    };
-    ( float    ) => { jprim!(jfloat)   };
-    ( double   ) => { jprim!(jdouble)  };
+    ( boolean  ) => { __prim_to_internal!(jboolean) };
+    ( byte     ) => { __prim_to_internal!(jbyte)    };
+    ( char     ) => { __prim_to_internal!(jchar)    };
+    ( short    ) => { __prim_to_internal!(jshort)   };
+    ( int      ) => { __prim_to_internal!(jint)     };
+    ( long     ) => { __prim_to_internal!(jlong)    };
+    ( float    ) => { __prim_to_internal!(jfloat)   };
+    ( double   ) => { __prim_to_internal!(jdouble)  };
 }
 
-macro_rules! jdesc_java_array {
-    ( [ [ $($inner:tt)+ ] ] ) => { concat!("[", jdesc_java_array!([ $($inner)+ ]) ) };
-    ( [ $($inner:tt)+ ] ) => { concat!("[", jdesc_java_elem!( $($inner)+ )) };
+/// Maps a normalized Java array type (such as `[jint]` or `[java.lang.String]`) to its internal
+/// descriptor form `[I` or `[Ljava/lang/String;`
+macro_rules! __java_array_to_internal {
+    ( [ [ $($inner:tt)+ ] ] ) => { concat!("[", __java_array_to_internal!([ $($inner)+ ]) ) };
+    ( [ $($inner:tt)+ ] ) => { concat!("[", __java_elem_to_internal!( $($inner)+ )) };
 }
 
-// Normalized-only jdesc
-macro_rules! jdesc {
+/// Maps normalized Java types to their internal descriptor forms.
+///
+/// Rust types trigger a compile-time error since they are not supported in literal signatures.
+macro_rules! __java_type_to_internal_literal {
     // prim(...)
-    ( prim ( $p:ident ) ) => { jprim!($p) };
+    ( prim ( $p:ident ) ) => { __prim_to_internal!($p) };
 
     // obj(...), including array element syntax: obj([ ... ])
-    ( obj ( [ $($inner:tt)+ ] ) as rust ( $as_ty:ty ) ) => { jdesc_java_array!([ $($inner)+ ]) };
-    ( obj ( $first:ident . $($rest:tt)+ ) as rust ( $as_ty:ty ) ) => { jdesc_java_name!($first . $($rest)+) };
-    ( obj ( . $outer:ident $( :: $inner:ident )* ) as rust ( $as_ty:ty ) ) => { jdesc_java_name!(. $outer $( :: $inner )*) };
+    ( obj ( [ $($inner:tt)+ ] ) as rust ( $as_ty:ty ) ) => { __java_array_to_internal!([ $($inner)+ ]) };
+    ( obj ( $first:ident . $($rest:tt)+ ) as rust ( $as_ty:ty ) ) => { __java_obj_to_internal!($first . $($rest)+) };
+    ( obj ( . $outer:ident $( :: $inner:ident )* ) as rust ( $as_ty:ty ) ) => { __java_obj_to_internal!(. $outer $( :: $inner )*) };
 
-    // rust(...) is only used in formatted signatures
-    ( rust ( $($r:tt)+ ) ) => { "{}" };
+    // The macros should never try to expand a literal signature with a Rust type
+    ( rust ( $($r:tt)+ ) ) => { compile_error!("BUG: Rust types are not supported in literal signatures") };
 }
 
-// Helper: normalize a raw type and emit its descriptor with jdesc
-macro_rules! jdesc_of_emit {
-    // Accept grouped normalized type
-    ( ( $($norm:tt)+ ) ) => { jdesc!( $($norm)+ ) };
-}
-macro_rules! jdesc_of {
-    ( $($raw:tt)+ ) => {
-        jnorm_type_then!( jdesc_of_emit, ( $($raw)+ ) )
-    };
-}
-
-macro_rules! rust_jdesc {
+/// Maps normalized Java or Rust types to their internal descriptor forms.
+///
+/// Rust types are dynamically mapped to their class names via the `Reference::class_name()` method.
+macro_rules! __any_type_to_internal_owned {
     // rust(...) is only used in formatted signatures
     ( rust ( $($r:tt)+ ) ) => { &<$($r)+ as $crate::refs::Reference>::class_name() };
 
     // prim | obj
     ( $($raw:tt)+ ) => {
-        jdesc!( $($raw)+ )
+        __java_type_to_internal_literal!( $($raw)+ )
     };
 }
-
-// ---------- NORMALIZATION ----------
 
 // Build the default Rust wrapper type for a Java array of arbitrary dimension.
 // Base cases map a 1D array; recursion wraps further dimensions in JObjectArray<...>.
@@ -155,37 +149,43 @@ macro_rules! rust_type_for_java_array_default {
     ( [ . $outer:ident $( :: $inner:ident )* ] ) => { $crate::objects::JObjectArray<$crate::objects::JObject> };
 }
 
-// Normalize one raw type and immediately invoke a callback macro with the normalized form.
-// Normalized shapes:
-//   - prim( jint )                                            // primitive types
-//   - obj( <java.name or .Default::Inner> ) as rust( <Ty> )   // default Ty = JObject if no `as`
-//   - rust( <Ty> )                                            // Rust refs, including &[...]
-// Usage:
-//   jnorm_type_then!(CB, ( <raw-type> ) [, extra tokens... ])
-// Calls:
-//   CB!( <normalized-type> [, extra tokens...] )
-//
-// Normalization examples:
-//   - jint -> prim(jint)
-//   - int  -> prim(jint)
-//   - java.lang.String -> obj(java.lang.String) as rust(JObject)
-//   - [java.lang.String] -> obj([java.lang.String]) as rust(JObjectArray<JObject>)
-//   - java.lang.String[] -> obj([java.lang.String]) as rust(JObjectArray<JObject>)
-//   - jint[] -> obj([jint]) as rust(JPrimitiveArray<jint>)
-//   - [jint] -> obj([jint]) as rust(JPrimitiveArray<jint>)
-//   - [[jint]] -> obj([[jint]]) as rust(JObjectArray<JPrimitiveArray<jint>>)
-//   - jint[][] -> obj([[jint]]) as rust(JObjectArray<JPrimitiveArray<jint>>)
-//   - .NoPackage -> obj(NoPackage) as rust(JObject)
-//   - .NoPackage as JString -> obj(NoPackage) as rust(JString)
-//   - java.lang.String as JString -> obj(java.lang.String) as rust(JString)
-//   - &JString -> rust(JString)
-//   - &[JString] -> rust(JObjectArray<JString>)
-//   - &[[JString]] -> rust(JObjectArray<JObjectArray<JString>>)
-//   - &[jint] -> rust(JPrimitiveArray<jint>)
-macro_rules! jnorm_type_then {
+/// Normalize one raw type and immediately invoke a callback macro with the normalized form.
+///
+/// # Normalized shapes:
+///   - Primitive types: `prim( jint )`
+///   - Java types, with cast: `obj( <java.name or .Default::Inner> )` as `rust( <Ty> )` (default Ty = JObject/JObjectArray if no `as`)
+///   - Rust `Reference` types and `&[]` arrays: `rust( <Ty> )`
+///
+/// # Usage:
+///
+///   __jsig_normalize_type_then!(CB, ( <raw-type> ) [, extra tokens... ])
+///
+/// # Calls:
+///
+///   CB!( <normalized-type> [, extra tokens...] )
+///
+/// # Normalization examples:
+///
+///   - `jint` -> `prim(jint)`
+///   - `int`  -> `prim(jint)`
+///   - `java.lang.String` -> `obj(java.lang.String)` as `rust(JObject)`
+///   - `[java.lang.String]` -> `obj([java.lang.String])` as `rust(JObjectArray<JObject>)`
+///   - `java.lang.String[]` -> `obj([java.lang.String])` as `rust(JObjectArray<JObject>)`
+///   - `jint[]` -> `obj([jint])` as `rust(JPrimitiveArray<jint>)`
+///   - `[jint]` -> `obj([jint])` as `rust(JPrimitiveArray<jint>)`
+///   - `[[jint]]` -> `obj([[jint]])` as `rust(JObjectArray<JPrimitiveArray<jint>>)`
+///   - `jint[][]` -> `obj([[jint]])` as `rust(JObjectArray<JPrimitiveArray<jint>>)`
+///   - `.NoPackage` -> `obj(NoPackage)` as `rust(JObject)`
+///   - `.NoPackage` as `JString` -> `obj(NoPackage)` as `rust(JString)`
+///   - `java.lang.String` as `JString` -> `obj(java.lang.String)` as `rust(JString)`
+///   - `&JString` -> `rust(JString)`
+///   - `&[JString]` -> `rust(JObjectArray<JString>)`
+///   - `&[[JString]]` -> `rust(JObjectArray<JObjectArray<JString>>)`
+///   - `&[jint]` -> `rust(JPrimitiveArray<jint>)`
+macro_rules! __jsig_normalize_type_then {
     // ----- Rust reference arrays -----
     ( $cb:tt, ( & [ [ $($inner:tt)+ ] ] ) $(, $($pass:tt)* )? ) => {
-        jnorm_type_then!{@objarr $cb, () (), [ [ $($inner)+ ] ] $(, $($pass)* )? }
+        __jsig_normalize_type_then!{@objarr $cb, () (), [ [ $($inner)+ ] ] $(, $($pass)* )? }
     };
     ( $cb:tt, ( & [ $ty:path ] ) $(, $($pass:tt)* )? ) => {
         $cb!{ ( rust( JObjectArray<$ty> ) ) $(, $($pass)* )? }
@@ -262,7 +262,7 @@ macro_rules! jnorm_type_then {
     };
     // Object array recursion for &[[...]]
     ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ [ $($inner:tt)+ ] ] $(, $($pass:tt)* )? ) => {
-        jnorm_type_then!{@objarr $cb, ( $($open)* JObjectArray< ) ( > $($close)* ), [ $($inner)+ ] $(, $($pass)* )? }
+        __jsig_normalize_type_then!{@objarr $cb, ( $($open)* JObjectArray< ) ( > $($close)* ), [ $($inner)+ ] $(, $($pass)* )? }
     };
     ( @objarr $cb:tt, ( $($open:tt)* ) ( $($close:tt)* ), [ $ty:path ] $(, $($pass:tt)* )? ) => {
         $cb!{ ( rust( $($open)* $ty $($close)* ) ) $(, $($pass)* )? }
@@ -387,30 +387,27 @@ macro_rules! jnorm_type_then {
     ( $cb:tt, ( rust ( $as:ty ) ) $(, $($pass:tt)* )? ) => { $cb!( ( rust( $as ) ) $(, $($pass)* )? ) };
 }
 
-// Shims: route from normalization macros to the real callback,
-// adding a trailing semicolon only when generating items.
+/// Shim that routes from normalization macros to the real callback, for items with a trailing
+/// semicolon
 macro_rules! __then_item {
     ( ( $($norm:tt)+ ), $real_cb:tt $(, $rest:tt )* ) => {
         $real_cb!( ( $($norm)+ ) $(, $rest )* );
     };
 }
+/// Shim that routes from normalization macros to the real callback, for expressions without a
+/// trailing semicolon
 macro_rules! __then_expr {
     ( ( $($norm:tt)+ ), $real_cb:tt $(, $rest:tt )* ) => {
         $real_cb!( ( $($norm)+ ) $(, $rest )* )
     };
 }
 
-// Rework jnorm_ret_then to use jnorm_type_then (variadic; forwards extra tokens)
 macro_rules! jnorm_ret_then {
     ( @ expr $cb:tt, ( $($ret:tt)+ ) $(, $($pass:tt)* )? ) => {
-        jnorm_type_then!( __then_expr, ( $($ret)+ ) $(, $cb, $($pass)* )? )
+        __jsig_normalize_type_then!( __then_expr, ( $($ret)+ ) $(, $cb, $($pass)* )? )
     };
     ( @ item $cb:tt, ( $($ret:tt)+ ) $(, $($pass:tt)* )? ) => {
-        jnorm_type_then!( __then_item, ( $($ret)+ ) $(, $cb, $($pass)* )? );
-    };
-    // Back-compat: default to expr
-    ( $cb:tt, ( $($ret:tt)+ ) $(, $($pass:tt)* )? ) => {
-        jnorm_ret_then!( @ expr $cb, ( $($ret)+ ) $(, $($pass)* )? )
+        __jsig_normalize_type_then!( __then_item, ( $($ret)+ ) $(, $cb, $($pass)* )? );
     };
 }
 
@@ -463,7 +460,7 @@ macro_rules! __jnorm_arg_suffix {
       base( $($base:tt)+ ), dims( $($dims:tt)* ),
       as $as_ty:ty , $($rest:tt)*
     ) => {
-        jnorm_type_then!{
+        __jsig_normalize_type_then!{
             $push, ( $($base)+ [ ] $($dims)* as $as_ty ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)*
         }
@@ -474,7 +471,7 @@ macro_rules! __jnorm_arg_suffix {
       base( $($base:tt)+ ), dims( $($dims:tt)* ),
       as $as_ty:ty
     ) => {
-        jnorm_type_then!{
+        __jsig_normalize_type_then!{
             $push, ( $($base)+ [ ] $($dims)* as $as_ty ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
         }
@@ -486,7 +483,7 @@ macro_rules! __jnorm_arg_suffix {
       base( $($base:tt)+ ), dims( $($dims:tt)* ),
       , $($rest:tt)*
     ) => {
-        jnorm_type_then!{
+        __jsig_normalize_type_then!{
             $push, ( $($base)+ [ ] $($dims)* ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n, $($rest)*
         }
@@ -497,7 +494,7 @@ macro_rules! __jnorm_arg_suffix {
       ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident,
       base( $($base:tt)+ ), dims( $($dims:tt)* )
     ) => {
-        jnorm_type_then!{
+        __jsig_normalize_type_then!{
             $push, ( $($base)+ [ ] $($dims)* ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
         }
@@ -508,14 +505,14 @@ macro_rules! __jnorm_arg_suffix {
       ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident,
       base( $($base:tt)+ ), dims( $($dims:tt)* ),
     ) => {
-        jnorm_type_then!{
+        __jsig_normalize_type_then!{
             $push, ( $($base)+ [ ] $($dims)* ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
         }
     };
 }
 
-// Internal muncher that uses jnorm_type_then per argument type and accumulates a normalized list.
+// Internal muncher that uses __jsig_normalize_type_then per argument type and accumulates a normalized list.
 // Signature carries a mode (@ with_pass | @ no_pass) and a "( $pass )" group that is forwarded unchanged.
 macro_rules! jnorm_args_then_munch {
     // End of list (with pass)
@@ -534,7 +531,7 @@ macro_rules! jnorm_args_then_munch {
       $n:ident : & [ [ $($inner:tt)+ ] ]
       $(, $($rest:tt)*)?
     ) => {
-        jnorm_type_then!{
+        __jsig_normalize_type_then!{
             jnorm_args_then_push, ( & [ [ $($inner)+ ] ] ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
@@ -545,7 +542,7 @@ macro_rules! jnorm_args_then_munch {
       $n:ident : & [ $($inner:tt)+ ]
       $(, $($rest:tt)*)?
     ) => {
-        jnorm_type_then!{
+        __jsig_normalize_type_then!{
             jnorm_args_then_push, ( & [ $($inner)+ ] ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
@@ -556,7 +553,7 @@ macro_rules! jnorm_args_then_munch {
       $n:ident : & $rust:ty
       $(, $($rest:tt)*)?
     ) => {
-        jnorm_type_then!{
+        __jsig_normalize_type_then!{
             jnorm_args_then_push, ( & $rust ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
@@ -567,7 +564,7 @@ macro_rules! jnorm_args_then_munch {
       $n:ident : [ $($arr:tt)+ ] as $as_ty:ty
       $(, $($rest:tt)*)?
     ) => {
-        jnorm_type_then!{
+        __jsig_normalize_type_then!{
             jnorm_args_then_push, ( [ $($arr)+ ] as $as_ty ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
@@ -578,7 +575,7 @@ macro_rules! jnorm_args_then_munch {
       $n:ident : [ $($arr:tt)+ ]
       $(, $($rest:tt)*)?
     ) => {
-        jnorm_type_then!{
+        __jsig_normalize_type_then!{
             jnorm_args_then_push, ( [ $($arr)+ ] ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
@@ -589,7 +586,7 @@ macro_rules! jnorm_args_then_munch {
       $n:ident : $first:ident $( . $seg:ident )+ $( :: $inner:ident )* as $as_ty:ty
       $(, $($rest:tt)*)?
     ) => {
-        jnorm_type_then!{
+        __jsig_normalize_type_then!{
             jnorm_args_then_push, ( $first $( . $seg )+ $( :: $inner )* as $as_ty ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
@@ -600,7 +597,7 @@ macro_rules! jnorm_args_then_munch {
       $n:ident : $first:ident $( . $seg:ident )+ $( :: $inner:ident )*
       $(, $($rest:tt)*)?
     ) => {
-        jnorm_type_then!{
+        __jsig_normalize_type_then!{
             jnorm_args_then_push, ( $first $( . $seg )+ $( :: $inner )* ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
@@ -611,7 +608,7 @@ macro_rules! jnorm_args_then_munch {
       $n:ident : . $outer:ident $( :: $inner:ident )* as $as_ty:ty
       $(, $($rest:tt)*)?
     ) => {
-        jnorm_type_then!{
+        __jsig_normalize_type_then!{
             jnorm_args_then_push, ( . $outer $( :: $inner )* as $as_ty ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
@@ -622,7 +619,7 @@ macro_rules! jnorm_args_then_munch {
       $n:ident : . $outer:ident $( :: $inner:ident )*
       $(, $($rest:tt)*)?
     ) => {
-        jnorm_type_then!{
+        __jsig_normalize_type_then!{
             jnorm_args_then_push, ( . $outer $( :: $inner )* ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
@@ -633,7 +630,7 @@ macro_rules! jnorm_args_then_munch {
       $n:ident : $p:ident
       $(, $($rest:tt)*)?
     ) => {
-        jnorm_type_then!{
+        __jsig_normalize_type_then!{
             jnorm_args_then_push, ( $p ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
@@ -720,37 +717,6 @@ macro_rules! _is_rust {
     };
 }
 
-macro_rules! any_rust {
-    // No args
-    ( ( ), ( $rk:ident ( $($rt:tt)* ) $( as rust ( $($ret_as:tt)+ ) )? ) ) => {
-        _is_rust!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? )
-    };
-    // Args present
-    ( ( $( $an:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* $(,)? ),
-      ( $rk:ident ( $($rt:tt)* ) $( as rust ( $($ret_as:tt)+ ) )? )
-    ) => {{
-        0
-        $( | _is_rust!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ) )*
-        | _is_rust!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? )
-    }};
-}
-
-macro_rules! ret_desc_lit       {
-    ( prim ( $p:ident ) ) => { jdesc!($p) };
-    ( obj  ( $($j:tt)+ ) as rust ( $as:ty ) ) => { jdesc!($($j)+) };
-    ( rust ( $($r:tt)+ ) ) => { "{}" };
-}
-macro_rules! ret_desc_fmt_piece {
-    ( prim ( $p:ident ) ) => { jdesc!($p) };
-    ( obj  ( $($j:tt)+ ) as rust ( $as:ty ) ) => { jdesc!($($j)+) };
-    ( rust ( $($r:tt)+ ) ) => { "{}" };
-}
-macro_rules! ret_desc_fmt_val   {
-    ( prim ( $p:ident ) ) => {};
-    ( obj  ( $($j:tt)+ ) as rust ( $as:ty ) ) => {};
-    ( rust ( $($r:tt)+ ) ) => { , rust_jdesc!($($r)+) };
-}
-
 // Parameter & return Rust types from normalized forms
 macro_rules! _param_ty_from_norm {
     ( prim ( void ) ) => {
@@ -787,13 +753,13 @@ macro_rules! build_sig_literal {
     ( ( $( $n:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* )
       -> ( $rk:ident ( $($rt:tt)* ) $( as rust ( $($ret_as:tt)+ ) )? )
     ) => {
-        concat!(
+        std::borrow::Cow::Borrowed(concat!(
             "(",
-            $( jdesc!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ) ),*,
+            $( __java_type_to_internal_literal!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ) ),*,
             ")",
-            jdesc!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? ),
+            __java_type_to_internal_literal!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? ),
             "\0"
-        )
+        ))
     };
 }
 macro_rules! build_sig_format {
@@ -803,7 +769,8 @@ macro_rules! build_sig_format {
         {
             let mut buf = String::new();
             fn extend_with_internal(buf: &mut String, s: &str) {
-                if s.len() > 1 && s.chars().nth(0) != Some('[') {
+                // If it's not a primitive (len > 1) or array descriptor it's a class name
+                if s.len() > 1 && !s.starts_with('[') {
                     buf.push('L');
                     buf.extend(s.chars().map(|c| if c == '.' { '/' } else { c }));
                     buf.push(';');
@@ -811,12 +778,12 @@ macro_rules! build_sig_format {
                     buf.extend(s.chars().map(|c| if c == '.' { '/' } else { c }));
                 }
             }
-            buf.push_str("(");
-            $( extend_with_internal(&mut buf, rust_jdesc!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? )); )*
-            buf.push_str(")");
-            extend_with_internal(&mut buf, rust_jdesc!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? ));
-            buf.push_str("\0");
-            buf
+            buf.push('(');
+            $( extend_with_internal(&mut buf, __any_type_to_internal_owned!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? )); )*
+            buf.push(')');
+            extend_with_internal(&mut buf, __any_type_to_internal_owned!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? ));
+            buf.push('\0');
+            std::borrow::Cow::Owned(buf)
         }
     };
 }
@@ -893,14 +860,14 @@ macro_rules! strip_ref_ty {
 }
 
 // Get a `jobject` handle from a reference-y Rust wrapper (type can include &)
-macro_rules! as_jobject_handle {
+macro_rules! __jsig_obj_reference_as_raw {
     ( $ty:ty, $expr:expr ) => {{
         <strip_ref_ty!($ty) as $crate::refs::Reference>::as_raw(($expr).as_ref())
     }};
 }
 
-// A single normalized arg → jni::sys::jvalue
-macro_rules! _jvalue_of_norm_arg {
+/// Maps a normalized argument type to a `[jni::sys::jvalue]`
+macro_rules! __jsig_arg_to_jvalue {
     ( $name:ident : prim ( jboolean ) ) => {
         jni::sys::jvalue {
             z: ($name as jni::sys::jboolean),
@@ -942,50 +909,26 @@ macro_rules! _jvalue_of_norm_arg {
         }
     };
 
-    // Java objects (normalized as "obj(...) as rust(Ty)") → object slot
+    // Java objects: get the raw `jobject` from the `as rust(...)` `Reference` type
     ( $name:ident : obj  ( $($j:tt)+ ) as rust ( $as_ty:ty ) ) => {
         jni::sys::jvalue {
-            l: as_jobject_handle!($as_ty, $name),
+            l: __jsig_obj_reference_as_raw!($as_ty, $name),
         }
     };
 
-    // Rust refs (normalized as "rust(Ty)") → object slot
+    // Rust `Reference` types
     ( $name:ident : rust ( $as_ty:ty ) ) => {
         jni::sys::jvalue {
-            l: as_jobject_handle!($as_ty, $name),
+            l: __jsig_obj_reference_as_raw!($as_ty, $name),
         }
     };
 }
 
-// Build `[jvalue; N]` from a normalized arg list
-macro_rules! build_jni_args_array {
+/// Build `[jvalue; N]` from a normalized arg list
+macro_rules! __jsig_args_to_jvalue_array {
     ( ( $( $an:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* $(,)? ) ) => {{
-        [ $( _jvalue_of_norm_arg!( $an : $ak($($at)*) $( as rust ( $($aas)+ ) )? ) ),* ]
+        [ $( __jsig_arg_to_jvalue!( $an : $ak($($at)*) $( as rust ( $($aas)+ ) )? ) ),* ]
     }};
-}
-
-// Expand a normalized args list into a typed parameter list
-macro_rules! param_list_from_args {
-    ( ( $( $an:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* $(,)? ) ) => {
-        $( $an: _param_ty_from_norm!( $ak($($at)*) $( as rust ( $($aas)+ ) )? ) ),*
-    };
-}
-
-// Normalize (args, ret) pair, then invoke callback that expects two groups:
-//   $cb!( ( <normalized args> ), ( <normalized ret> ) )
-macro_rules! jnorm_sig_then {
-    ( $cb:ident, ( $($args:tt)* ), ( $($ret:tt)+ ) ) => {
-        $cb!( ( jnorm_args!( $($args)* ) ), ( jnorm_ret!( $($ret)+ ) ) )
-    };
-    // Variant for callbacks that expect "args -> ret":
-    ( $cb:ident, ( $($args:tt)* ) -> ( $($ret:tt)+ ) ) => {
-        $cb!( ( jnorm_args!( $($args)* ) ) -> ( jnorm_ret!( $($ret)+ ) ) )
-    };
-}
-
-// Helper to unwrap one layer of parentheses around a token tree
-macro_rules! unwrap_parens {
-    ( ( $($inner:tt)* ) ) => { $($inner)* };
 }
 
 // ----- LOOKUP FN -----
@@ -1252,9 +1195,7 @@ macro_rules! _emit_method_call_fn {
                 method_id: JMethodID,
                 $( $an: _param_ty_from_norm!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ) ),*
             ) -> Result< _ret_ty_from_norm!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? ) > {
-                let jni_args = build_jni_args_array!( ( $( $an : $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ),* ) );
-
-                let _ = &this;
+                let jni_args = __jsig_args_to_jvalue_array!( ( $( $an : $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ),* ) );
 
                 _jni_call_from_norm_ret!{
                     env,
@@ -1377,7 +1318,7 @@ macro_rules! jgen_bind_method {
 // ------------------
 
 // ----------- Minimal placeholders so this compiles in isolation -----------
-use std::{borrow::Cow, ffi::CStr, fmt};
+use std::borrow::Cow;
 
 type Result<T> = core::result::Result<T, ()>;
 type JMethodID = *mut jni::sys::_jmethodID;
@@ -1401,7 +1342,7 @@ impl Reference for JFoo {
     }
 }
 #[derive(Default)]
-struct Env;
+pub struct Env;
 
 impl Env {
     fn get_method_id(&mut self, _class: &JClass, _name: &str, _sig: &str) -> Result<JMethodID> {
@@ -1421,13 +1362,6 @@ static GLOBAL_JCLASS: JClass = JClass;
 impl JFoo {
     fn lookup_class() -> Result<&'static JClass> {
         Ok(&GLOBAL_JCLASS)
-    }
-}
-
-struct JNIStr;
-impl fmt::Display for JNIStr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("JNI_STR")
     }
 }
 
@@ -1560,42 +1494,33 @@ mod objects {
 }
 pub use objects::{JClass, JObject, JObjectArray, JPrimitiveArray, JString};
 
-const _: &str = jdesc!(prim(jint)); // "I"
-const _: &str = jdesc!(prim(void)); // "V"
+macro_rules! jni_internal_of_emit {
+    // Accept grouped normalized type
+    ( ( $($norm:tt)+ ) ) => { __java_type_to_internal_literal!( $($norm)+ ) };
+}
+/// Test utility to get the JNI type descriptor of a raw type
+macro_rules! jni_internal_of {
+    ( $($raw:tt)+ ) => {
+        __jsig_normalize_type_then!( jni_internal_of_emit, ( $($raw)+ ) )
+    };
+}
 
-// 2) Objects and arrays (normalized)
-const _: &str = jdesc!(obj(java.lang.String) as rust(JObject)); // "Ljava/lang/String;"
-const _: &str = jdesc!(obj([java.lang.String]) as rust(JObjectArray<JObject>)); // "[Ljava/lang/String;"
-const _: &str = jdesc!(obj([[java.lang.String]]) as rust(JObjectArray<JString>)); // "[Ljava/lang/String;"
+const _: &str = jni_internal_of!(jint); // "I"
+const _: &str = jni_internal_of!(int); // "I"
+const _: &str = jni_internal_of!(void); // "V"
 
-const _: &str = jdesc!(obj([[java.lang.String]]) as rust(JObjectArray<JObjectArray<JObject>>)); // "[[Ljava/lang/String;"
+const _: &str = jni_internal_of!(java.lang.String); // "Ljava/lang/String;"
+const _: &str = jni_internal_of!([java.lang.String]); // "[Ljava/lang/String;"
+const _: &str = jni_internal_of!([[java.lang.String]]); // "[[Ljava/lang/String;"
+const _: &str = jni_internal_of!(java.util.Map::Entry); // "Ljava/util/Map$Entry;"
+const _: &str = jni_internal_of!([java.util.Map::Entry]); // "[Ljava/util/Map$Entry;"
+const _: &str = jni_internal_of!(.Hello); // "LHello;"
+const _: &str = jni_internal_of!([.Hello]); // "[LHello;"
+const _: &str = jni_internal_of!(char); // "C"
+const _: &str = jni_internal_of!([char]); // "[C"
 
-const _: &str = jdesc!(obj(java.util.Map::Entry) as rust(JObject)); // "Ljava/util/Map$Entry;"
-const _: &str = jdesc!(obj([java.util.Map::Entry]) as rust(JObjectArray<JObject>)); // "[Ljava/util/Map$Entry;"
-const _: &str = jdesc!(obj(.Hello) as rust(JObject)); // "LHello;"
-const _: &str = jdesc!(obj([.Hello]) as rust(JObjectArray<JObject>)); // "[LHello;"
-const _: &str = jdesc!(obj([jchar]) as rust(JPrimitiveArray<jchar>)); // "[C"
-
-// 1) Primitives (with and without 'j')
-const _: &str = jdesc_of!(jint); // "I"
-const _: &str = jdesc_of!(int); // "I"
-const _: &str = jdesc_of!(void); // "V"
-
-// 2) Objects and arrays (internal names)
-const _: &str = jdesc_of!(java.lang.String); // "Ljava/lang/String;"
-const _: &str = jdesc_of!([java.lang.String]); // "[Ljava/lang/String;"
-const _: &str = jdesc_of!([[java.lang.String]]); // "[[Ljava/lang/String;"
-const _: &str = jdesc_of!(java.util.Map::Entry); // "Ljava/util/Map$Entry;"
-const _: &str = jdesc_of!([java.util.Map::Entry]); // "[Ljava/util/Map$Entry;"
-const _: &str = jdesc_of!(.Hello); // "LHello;"
-const _: &str = jdesc_of!([.Hello]); // "[LHello;"
-const _: &str = jdesc_of!(char); // "C"
-const _: &str = jdesc_of!([char]); // "[C"
-
-const _: &str = jdesc_of!(java.lang.String); // "Ljava/lang/String;"
-const _: &str = jdesc_of!([[java.lang.String]]); // "[Ljava/lang/String;"
-
-// -------------------- Example --------------------
+const _: &str = jni_internal_of!(java.lang.String); // "Ljava/lang/String;"
+const _: &str = jni_internal_of!([[java.lang.String]]); // "[Ljava/lang/String;"
 
 jgen_bind_method!(
     this: JFoo,
@@ -1719,26 +1644,22 @@ fn main() {
     println!("\n=== Testing Individual Descriptors ===");
     // Test that primitive arrays now parse correctly
     println!("1D Primitive array descriptors:");
-    println!("jint[] -> {}", jdesc_of!(jint[]));
-    println!("jbyte[] -> {}", jdesc_of!(jbyte[]));
-    println!("jchar[] -> {}", jdesc_of!(jchar[]));
+    println!("jint[] -> {}", jni_internal_of!(jint[]));
+    println!("jbyte[] -> {}", jni_internal_of!(jbyte[]));
+    println!("jchar[] -> {}", jni_internal_of!(jchar[]));
 
     println!("\n2D Primitive array descriptors:");
-    println!("jint[][] -> {}", jdesc_of!(jint[][]));
-    println!("jbyte[][] -> {}", jdesc_of!(jbyte[][]));
-    println!("jchar[][] -> {}", jdesc_of!(jchar[][]));
+    println!("jint[][] -> {}", jni_internal_of!(jint[][]));
+    println!("jbyte[][] -> {}", jni_internal_of!(jbyte[][]));
+    println!("jchar[][] -> {}", jni_internal_of!(jchar[][]));
 
     println!("\n3D Primitive array descriptors:");
-    println!("jint[][][] -> {}", jdesc_of!(jint[][][]));
-    println!("jchar[][][] -> {}", jdesc_of!(jchar[][][]));
-
-    println!("\nRust-like syntax descriptors:");
-    println!("&[[jint]] -> {}", jdesc_of!(&[[jint]]));
-    println!("&[[[jchar]]] -> {}", jdesc_of!(&[[[jchar]]]));
+    println!("jint[][][] -> {}", jni_internal_of!(jint[][][]));
+    println!("jchar[][][] -> {}", jni_internal_of!(jchar[][][]));
 
     println!("\nBracket syntax descriptors:");
-    println!("[[jint]] -> {}", jdesc_of!([[jint]]));
-    println!("[[[jchar]]] -> {}", jdesc_of!([[[jchar]]]));
+    println!("[[jint]] -> {}", jni_internal_of!([[jint]]));
+    println!("[[[jchar]]] -> {}", jni_internal_of!([[[jchar]]]));
 
     let foo = JFoo::default();
     let mut env = Env::default();
