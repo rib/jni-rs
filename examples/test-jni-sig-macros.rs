@@ -545,10 +545,21 @@ macro_rules! __jnorm_arg_suffix {
         }
     };
 
-    // End-of-list terminator
+    // End-of-list terminator (when there are trailing tokens that need to be passed through)
     ( $push:tt, $cb:tt, @ $mode:ident,
       ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident,
       base( $($base:tt)+ ), dims( $($dims:tt)* )
+    ) => {
+        jnorm_type_then!{
+            $push, ( $($base)+ [ ] $($dims)* ),
+            $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n
+        }
+    };
+
+    // End-of-list terminator (when called with empty $($after)* - no trailing tokens)
+    ( $push:tt, $cb:tt, @ $mode:ident,
+      ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident,
+      base( $($base:tt)+ ), dims( $($dims:tt)* ),
     ) => {
         jnorm_type_then!{
             $push, ( $($base)+ [ ] $($dims)* ),
@@ -1713,6 +1724,18 @@ fn main() {
 
     let sig = print_jni_sig_for!((a: jint, b: java.lang.String[]) -> java.lang.String);
     assert_eq!(sig, "(I[Ljava/lang/String;)Ljava/lang/String;\0");
+
+    let sig = print_jni_sig_for!((a: jint, b: java.lang.String[][]) -> java.lang.String);
+    assert_eq!(sig, "(I[[Ljava/lang/String;)Ljava/lang/String;\0");
+
+    println!("\n=== Testing Suffix Array Arguments ===");
+    println!("The following demonstrates that suffix array arguments (java.lang.String[]) now parse correctly:");
+
+    let sig =
+        print_jni_sig_for!((name: java.lang.String, items: java.util.List[], count: jint) -> void);
+    assert_eq!(sig, "(Ljava/lang/String;[Ljava/util/List;I)V\0");
+    let sig = print_jni_sig_for!((name: java.lang.String, items: java.util.List[][], count: jint) -> void);
+    assert_eq!(sig, "(Ljava/lang/String;[[Ljava/util/List;I)V\0");
 
     println!("\n=== Testing Individual Descriptors ===");
     // Test that primitive arrays now parse correctly
