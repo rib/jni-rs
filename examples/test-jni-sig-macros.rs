@@ -840,62 +840,49 @@ macro_rules! __jsig_emit_sig_dynamic_owned {
     };
 }
 
-// ---------- helpers to build lookup signature from normalized args/ret ----------
-
-// Helper to recursively check if any type is rust(...) and choose callback
-macro_rules! _lookup_sig_from_norm_check_args {
-    // Base case: no more args, check return type with original args preserved
-    ( (), ( $($nret:tt)* ), $literal_cb:tt, $format_cb:tt, ( $($orig_args:tt)* ) ) => {
-        _lookup_sig_from_norm_check_ret!( ( $($nret)* ), $literal_cb, $format_cb, ( $($orig_args)* ) )
-    };
-    // Recursive case: check first arg, continue with rest
-    ( ( $first_name:ident : rust ( $($first_type:tt)* ) , $($rest_args:tt)* ), ( $($nret:tt)* ), $literal_cb:tt, $format_cb:tt, ( $($orig_args:tt)* ) ) => {
-        // Found rust(...) type, use format callback
-        $format_cb!( ( $($orig_args)* ) -> ( $($nret)* ) )
-    };
-    // Recursive case: non-rust arg, continue checking
-    ( ( $first_name:ident : $first_kind:ident ( $($first_type:tt)* ) $( as rust ( $($first_as:tt)+ ) )? , $($rest_args:tt)* ), ( $($nret:tt)* ), $literal_cb:tt, $format_cb:tt, ( $($orig_args:tt)* ) ) => {
-        _lookup_sig_from_norm_check_args!( ( $($rest_args)* ), ( $($nret)* ), $literal_cb, $format_cb, ( $($orig_args)* ) )
-    };
-    // Handle single arg without trailing comma
-    ( ( $first_name:ident : rust ( $($first_type:tt)* ) ), ( $($nret:tt)* ), $literal_cb:tt, $format_cb:tt, ( $($orig_args:tt)* ) ) => {
-        // Found rust(...) type, use format callback
-        $format_cb!( ( $($orig_args)* ) -> ( $($nret)* ) )
-    };
-    ( ( $first_name:ident : $first_kind:ident ( $($first_type:tt)* ) $( as rust ( $($first_as:tt)+ ) )? ), ( $($nret:tt)* ), $literal_cb:tt, $format_cb:tt, ( $($orig_args:tt)* ) ) => {
-        _lookup_sig_from_norm_check_args!( ( ), ( $($nret)* ), $literal_cb, $format_cb, ( $($orig_args)* ) )
-    };
-}
-
-// Helper to check return type
-macro_rules! _lookup_sig_from_norm_check_ret {
-    // rust(...) return type, use format callback
-    ( ( rust ( $($ret_type:tt)* ) ), $literal_cb:tt, $format_cb:tt, ( $($orig_args:tt)* ) ) => {
-        $format_cb!( ( $($orig_args)* ) -> ( rust( $($ret_type)* ) ) )
+/// Assuming the args have already been checked for rust(...) types, check the return type
+/// and determine whether to emit a literal (Cow::Borrowed) or dynamic (Cow::Owned) signature
+macro_rules! __jsig_emit_sig_cow__check_ret_then {
+    // rust(...) return type, use dynamic callback
+    ( ( rust ( $($ret_type:tt)* ) ), $literal_cb:tt, $dynamic_cb:tt, ( $($orig_args:tt)* ) ) => {
+        $dynamic_cb!( ( $($orig_args)* ) -> ( rust( $($ret_type)* ) ) )
     };
     // Non-rust return type, use literal callback
-    ( ( $ret_kind:ident ( $($ret_type:tt)* ) $( as rust ( $($ret_as:tt)+ ) )? ), $literal_cb:tt, $format_cb:tt, ( $($orig_args:tt)* ) ) => {
+    ( ( $ret_kind:ident ( $($ret_type:tt)* ) $( as rust ( $($ret_as:tt)+ ) )? ), $literal_cb:tt, $dynamic_cb:tt, ( $($orig_args:tt)* ) ) => {
         $literal_cb!( ( $($orig_args)* ) -> ( $ret_kind( $($ret_type)* ) $( as rust( $($ret_as)+ ) )? ) )
     };
 }
 
-// Given normalized args and ret, produce the final signature expr
-macro_rules! _lookup_sig_from_norm {
-    ( ( $($nargs:tt)* ), ( $($nret:tt)* ) ) => {
-        _lookup_sig_from_norm_check_args!( ( $($nargs)* ), ( $($nret)* ), __jsig_emit_sig_literal, __jsig_emit_sig_dynamic_owned, ( $($nargs)* ) )
+/// Helper to recursively check if any type is rust(...) before chaining to return type check
+macro_rules! __jsig_emit_sig_cow__check_args_then {
+    // Base case: no more args, check return type with original args preserved
+    ( (), ( $($nret:tt)* ), $literal_cb:tt, $dynamic_cb:tt, ( $($orig_args:tt)* ) ) => {
+        __jsig_emit_sig_cow__check_ret_then!( ( $($nret)* ), $literal_cb, $dynamic_cb, ( $($orig_args)* ) )
+    };
+    // Recursive case: check first arg, continue with rest
+    ( ( $first_name:ident : rust ( $($first_type:tt)* ) , $($rest_args:tt)* ), ( $($nret:tt)* ), $literal_cb:tt, $dynamic_cb:tt, ( $($orig_args:tt)* ) ) => {
+        // Found rust(...) type, use dynamic callback
+        $dynamic_cb!( ( $($orig_args)* ) -> ( $($nret)* ) )
+    };
+    // Recursive case: non-rust arg, continue checking
+    ( ( $first_name:ident : $first_kind:ident ( $($first_type:tt)* ) $( as rust ( $($first_as:tt)+ ) )? , $($rest_args:tt)* ), ( $($nret:tt)* ), $literal_cb:tt, $dynamic_cb:tt, ( $($orig_args:tt)* ) ) => {
+        __jsig_emit_sig_cow__check_args_then!( ( $($rest_args)* ), ( $($nret)* ), $literal_cb, $dynamic_cb, ( $($orig_args)* ) )
+    };
+    // Handle single arg without trailing comma
+    ( ( $first_name:ident : rust ( $($first_type:tt)* ) ), ( $($nret:tt)* ), $literal_cb:tt, $dynamic_cb:tt, ( $($orig_args:tt)* ) ) => {
+        // Found rust(...) type, use dynamic callback
+        $dynamic_cb!( ( $($orig_args)* ) -> ( $($nret)* ) )
+    };
+    ( ( $first_name:ident : $first_kind:ident ( $($first_type:tt)* ) $( as rust ( $($first_as:tt)+ ) )? ), ( $($nret:tt)* ), $literal_cb:tt, $dynamic_cb:tt, ( $($orig_args:tt)* ) ) => {
+        __jsig_emit_sig_cow__check_args_then!( ( ), ( $($nret)* ), $literal_cb, $dynamic_cb, ( $($orig_args)* ) )
     };
 }
 
-// Glue: normalize ret next
-macro_rules! __jsig_emit_sig_cow__check_args_shim {
-    // Accept grouped normalized return
-    ( ( $($norm_ret:tt)+ ), ( $($norm_args:tt)* ) ) => {
-        _lookup_sig_from_norm!( ( $($norm_args)* ), ( $($norm_ret)+ ) )
-    };
-}
+/// Given normalized args and ret, emit a `Cow<str>` signature either based on a `Cow::Borrowed` string
+/// literal or a `Cow::Owned String` built at runtime.
 macro_rules! __jsig_emit_sig_cow {
-    ( ( $($norm_args:tt)* ), ( $($raw_ret:tt)+ ) ) => {
-        __jsig_normalize_ret_then!( @ expr __jsig_emit_sig_cow__check_args_shim, ( $($raw_ret)+ ), ( $($norm_args)* ) )
+    ( ( $($norm_args:tt)* ), ( $($norm_ret:tt)+ ) ) => {
+        __jsig_emit_sig_cow__check_args_then!( ( $($norm_args)* ), ( $($norm_ret)* ), __jsig_emit_sig_literal, __jsig_emit_sig_dynamic_owned, ( $($norm_args)* ) )
     };
 }
 
@@ -1014,8 +1001,7 @@ macro_rules! __jgen_emit_jni_sys_call {
                 ($this).as_ref().as_raw(),
                 $method_id,
                 $jni_args.as_ptr()
-            );
-            Ok(())
+            )
         }
     };
     (
@@ -1023,15 +1009,14 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( prim ( jboolean ) )
     ) => {
         unsafe {
-            let ret: jni::sys::jboolean = jni_call_check_ex!(
+            jni_call_check_ex!(
                 $env,
                 v1_1,
                 CallBooleanMethodA,
                 ($this).as_ref().as_raw(),
                 $method_id,
                 $jni_args.as_ptr()
-            )?;
-            Ok(ret)
+            )
         }
     };
     (
@@ -1039,15 +1024,14 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( prim ( jbyte ) )
     ) => {
         unsafe {
-            let ret: jni::sys::jbyte = jni_call_check_ex!(
+            jni_call_check_ex!(
                 $env,
                 v1_1,
                 CallByteMethodA,
                 ($this).as_ref().as_raw(),
                 $method_id,
                 $jni_args.as_ptr()
-            )?;
-            Ok(ret)
+            )
         }
     };
     (
@@ -1055,15 +1039,14 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( prim ( jchar ) )
     ) => {
         unsafe {
-            let ret: jni::sys::jchar = jni_call_check_ex!(
+            jni_call_check_ex!(
                 $env,
                 v1_1,
                 CallCharMethodA,
                 ($this).as_ref().as_raw(),
                 $method_id,
                 $jni_args.as_ptr()
-            )?;
-            Ok(ret)
+            )
         }
     };
     (
@@ -1071,15 +1054,14 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( prim ( jshort ) )
     ) => {
         unsafe {
-            let ret: jni::sys::jshort = jni_call_check_ex!(
+            jni_call_check_ex!(
                 $env,
                 v1_1,
                 CallShortMethodA,
                 ($this).as_ref().as_raw(),
                 $method_id,
                 $jni_args.as_ptr()
-            )?;
-            Ok(ret)
+            )
         }
     };
     (
@@ -1087,15 +1069,14 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( prim ( jint ) )
     ) => {
         unsafe {
-            let ret: jni::sys::jint = jni_call_check_ex!(
+            jni_call_check_ex!(
                 $env,
                 v1_1,
                 CallIntMethodA,
                 ($this).as_ref().as_raw(),
                 $method_id,
                 $jni_args.as_ptr()
-            )?;
-            Ok(ret)
+            )
         }
     };
     (
@@ -1103,15 +1084,14 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( prim ( jlong ) )
     ) => {
         unsafe {
-            let ret: jni::sys::jlong = jni_call_check_ex!(
+            jni_call_check_ex!(
                 $env,
                 v1_1,
                 CallLongMethodA,
                 ($this).as_ref().as_raw(),
                 $method_id,
                 $jni_args.as_ptr()
-            )?;
-            Ok(ret)
+            )
         }
     };
     (
@@ -1119,15 +1099,14 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( prim ( jfloat ) )
     ) => {
         unsafe {
-            let ret: jni::sys::jfloat = jni_call_check_ex!(
+            jni_call_check_ex!(
                 $env,
                 v1_1,
                 CallFloatMethodA,
                 ($this).as_ref().as_raw(),
                 $method_id,
                 $jni_args.as_ptr()
-            )?;
-            Ok(ret)
+            )
         }
     };
     (
@@ -1135,15 +1114,14 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( prim ( jdouble ) )
     ) => {
         unsafe {
-            let ret: jni::sys::jdouble = jni_call_check_ex!(
+            jni_call_check_ex!(
                 $env,
                 v1_1,
                 CallDoubleMethodA,
                 ($this).as_ref().as_raw(),
                 $method_id,
                 $jni_args.as_ptr()
-            )?;
-            Ok(ret)
+            )
         }
     };
     (
@@ -1159,7 +1137,7 @@ macro_rules! __jgen_emit_jni_sys_call {
                 $method_id,
                 $jni_args.as_ptr()
             )?;
-            Ok(<$as_ty>::from_raw($env, ret_obj)?)
+            <$as_ty>::from_raw($env, ret_obj)
         }
     };
     (
@@ -1175,7 +1153,7 @@ macro_rules! __jgen_emit_jni_sys_call {
                 $method_id,
                 $jni_args.as_ptr()
             )?;
-            Ok(<$as_ty>::from_raw($env, ret_obj)?)
+            <$as_ty>::from_raw($env, ret_obj)
         }
     };
 }
@@ -1192,7 +1170,7 @@ macro_rules! __jgen_emit_lookup_method_fn {
             fn [<_ $rname _lookup>](env: &mut Env) -> Result<JMethodID> {
                 let class: &JClass = $this::lookup_class()?;
 
-                let sig = __jsig_normalize_args_then!( @expr __jsig_emit_sig_cow, ( $($args)* ), ( $($ret)+ ) );
+                let sig = __jsig_normalize_args_ret_then!( @expr __jsig_emit_sig_cow, ( $($args)* ), ( $($ret)+ ) );
 
                 env.get_method_id(class, stringify!($jname), &sig)
             }
@@ -1333,17 +1311,17 @@ type Result<T> = core::result::Result<T, ()>;
 type JMethodID = *mut jni::sys::_jmethodID;
 
 #[derive(Default)]
-struct JFoo;
+struct JTest;
 
-impl AsRef<JFoo> for JFoo {
-    fn as_ref(&self) -> &JFoo {
+impl AsRef<JTest> for JTest {
+    fn as_ref(&self) -> &JTest {
         self
     }
 }
 
-impl Reference for JFoo {
+impl Reference for JTest {
     fn class_name() -> Cow<'static, str> {
-        Cow::Borrowed("com/example/JFoo")
+        Cow::Borrowed("com.example.Test")
     }
 
     fn as_raw(&self) -> jni::sys::jobject {
@@ -1368,7 +1346,7 @@ impl Env {
 }
 
 static GLOBAL_JCLASS: JClass = JClass;
-impl JFoo {
+impl JTest {
     fn lookup_class() -> Result<&'static JClass> {
         Ok(&GLOBAL_JCLASS)
     }
@@ -1504,7 +1482,6 @@ mod objects {
 pub use objects::{JClass, JObject, JObjectArray, JPrimitiveArray, JString};
 
 macro_rules! jni_internal_of_emit {
-    // Accept grouped normalized type
     ( ( $($norm:tt)+ ) ) => { __java_type_to_internal_literal!( $($norm)+ ) };
 }
 /// Test utility to get the JNI type descriptor of a raw type
@@ -1532,61 +1509,61 @@ const _: &str = jni_internal_of!(java.lang.String); // "Ljava/lang/String;"
 const _: &str = jni_internal_of!([[java.lang.String]]); // "[Ljava/lang/String;"
 
 jgen_bind_method!(
-    this: JFoo,
+    this: JTest,
     javaFunction as rust_function_0,
     sig: (a: java.lang.String, c: jint) -> void
 );
 
 jgen_bind_method!(
-    this: JFoo,
+    this: JTest,
     javaFunction as rust_function_1,
     sig: (a: &JString, b: java.lang.String as JString, c: jint) -> jint
 );
 
 jgen_bind_method!(
-    this: JFoo,
+    this: JTest,
     javaFunction as rust_function_2,
     sig: (a: &JString, b: java.lang.String[], c: jint) -> void
 );
 
 jgen_bind_method!(
-    this: JFoo,
+    this: JTest,
     javaFunction as rust_function_3,
     sig: (a: &JString, b: java.lang.String as JString, c: jint) -> JString
 );
 
 jgen_bind_method!(
-    this: JFoo,
+    this: JTest,
     javaFunction as rust_function_4,
     sig: (a: &JString, b: java.lang.String as JString, c: jint) -> crate::objects::JString
 );
 
 jgen_bind_method!(
-    this: JFoo,
+    this: JTest,
     javaFunction as rust_function_5,
     sig: (a: &JString, b: java.lang.String as JString, c: jint) -> java.lang.String
 );
 
 jgen_bind_method!(
-    this: JFoo,
+    this: JTest,
     javaFunction as rust_function_6,
     sig: (a: &JString, b: java.lang.String as JString, c: jint) -> java.lang.String[]
 );
 jgen_bind_method!(
-    this: JFoo,
+    this: JTest,
     javaFunction as rust_function_7,
     sig: (a: &JString, b: java.lang.String as JString, c: jint) -> java.lang.String[] as JObjectArray<JString>
 );
 
 jgen_bind_method!(
-    this: JFoo,
+    this: JTest,
     javaFunction as rust_function_8,
     sig: (a: &JString, b: java.lang.String[], c: jint[]) -> void
 );
 
 // Test multi-dimensional primitive arrays with rust-like syntax
 jgen_bind_method!(
-    this: JFoo,
+    this: JTest,
     javaFunction as rust_function_10,
     sig: (a: &[[jint]], b: &[[[jchar]]], c: &[[jdouble]]) -> &[[jbyte]]
 );
@@ -1595,7 +1572,7 @@ jgen_bind_method!(
 macro_rules! print_jni_sig_for {
     ( ( $($args:tt)* ) -> $($ret:tt)+ ) => {
         {
-            let sig = __jsig_normalize_args_then!( @expr __jsig_emit_sig_cow, ( $($args)* ), ( $($ret)+ ) );
+            let sig = __jsig_normalize_args_ret_then!( @expr __jsig_emit_sig_cow, ( $($args)* ), ( $($ret)+ ) );
             println!("Signature: ({}) -> {} = {}",
                 stringify!($($args)*),
                 stringify!($($ret)+),
@@ -1670,18 +1647,15 @@ fn main() {
     println!("[[jint]] -> {}", jni_internal_of!([[jint]]));
     println!("[[[jchar]]] -> {}", jni_internal_of!([[[jchar]]]));
 
-    let foo = JFoo::default();
-    let mut env = Env::default();
+    let test = JTest;
+    let mut env = Env;
 
     // Don't call these, just make sure they compile
     let _ = || {
         // Test a primitive return function (should use &Env)
         let method_0 = _rust_function_0_lookup(&mut env).unwrap();
-        let _void_ret = _rust_function_0_call(
-            &env,
-            &foo,
-            method_0,
-            &JObject::default(), // java.lang.String normalized as JObject
+        _rust_function_0_call(
+            &env, &test, method_0, &JObject, // java.lang.String normalized as JObject
             42,
         )
         .unwrap();
@@ -1690,11 +1664,7 @@ fn main() {
         let method_6 = _rust_function_6_lookup(&mut env).unwrap();
         let _obj_ret = _rust_function_6_call(
             &mut env, // Note: &mut Env for object return
-            &foo,
-            method_6,
-            &JString::default(),
-            &JString::default(),
-            42,
+            &test, method_6, &JString, &JString, 42,
         )
         .unwrap();
     };
