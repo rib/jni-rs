@@ -3,59 +3,6 @@ use paste::paste;
 
 //pub use crate::sys::{jboolean, jbyte, jchar, jdouble, jfloat, jint, jlong, jshort, jvalue};
 
-macro_rules! jprim_canon {
-    (void) => {
-        void
-    };
-    (jboolean) => {
-        jboolean
-    };
-    (boolean) => {
-        jboolean
-    };
-    (jbyte) => {
-        jbyte
-    };
-    (byte) => {
-        jbyte
-    };
-    (jchar) => {
-        jchar
-    };
-    (char) => {
-        jchar
-    };
-    (jshort) => {
-        jshort
-    };
-    (short) => {
-        jshort
-    };
-    (jint) => {
-        jint
-    };
-    (int) => {
-        jint
-    };
-    (jlong) => {
-        jlong
-    };
-    (long) => {
-        jlong
-    };
-    (jfloat) => {
-        jfloat
-    };
-    (float) => {
-        jfloat
-    };
-    (jdouble) => {
-        jdouble
-    };
-    (double) => {
-        jdouble
-    };
-}
 macro_rules! jprim {
     (void) => {
         "V"
@@ -210,9 +157,9 @@ macro_rules! rust_type_for_java_array_default {
 
 // Normalize one raw type and immediately invoke a callback macro with the normalized form.
 // Normalized shapes:
-//   - prim( jprim_canon!(...) )
+//   - prim( jint )                                            // primitive types
 //   - obj( <java.name or .Default::Inner> ) as rust( <Ty> )   // default Ty = JObject if no `as`
-//   - rust( <Ty> )                                           // Rust refs, including &[...]
+//   - rust( <Ty> )                                            // Rust refs, including &[...]
 // Usage:
 //   jnorm_type_then!(CB, ( <raw-type> ) [, extra tokens... ])
 // Calls:
