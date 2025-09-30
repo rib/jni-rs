@@ -1260,33 +1260,40 @@ macro_rules! __jgen_emit_call_method_fn {
     };
 }
 
-// ---------- Public: jgen_bind_method ----------
-/*
-Usage:
-jgen_bind_method!(
-    this: JFoo,
-    javaMethodName as rust_method_name,
-    sig: (a: &JString, b: java.lang.String as JString, c: jint) -> void
-);
-
-outputs:
-
-fn _rust_method_name_lookup(env: &mut Env) -> Result<JMethodID> {
-    let class: &JClass = JFoo::lookup_class()?;
-    let sig = if /* all literal */ {
-        __jsig_emit_sig_literal!((a: rust(&JString) as &JString, b: obj(java.lang.String) as JString, c: prim(jint) as jint) -> (prim(void) as void))
-    } else {
-        __jsig_emit_sig_dynamic_owned!((a: rust(&JString) as &JString, b: obj(java.lang.String) as JString, c: prim(jint) as jint) -> (prim(void) as void))
-    };
-    // Use `class`, `sig`, and the method name to look up the method ID
-    env.get_method_id(class, "javaMethodName", &sig)
-}
-
-fn _rust_method_name_call(env: Env, this: &JFoo, method_id: JMethodID, a: &JString, b: &JString, c: jint) -> Result<void> {
-    let class: &JClass = JFoo::lookup_class()?;
-    jni_call_check_ex!(self, v1_1, CallVoidMethodA, obj, method_id, jni_args)
-}
-*/
+/// Binds a Java method to Rust by emitting a method ID lookup function and a call function.
+///
+/// # Usage
+///
+///  jgen_bind_method!(
+///      this: JTest,
+///      javaMethodName as rust_method_name,
+///      sig: (a: &JString, b: java.lang.String as JString, c: jint) -> void
+///  );
+///
+///  # Outputs:
+///
+///  fn _rust_method_name_lookup(env: &mut Env) -> Result<JMethodID> {
+///      let class: &JClass = JTest::lookup_class()?;
+///      let sig = std::borrow::Cow::Borrowed("(Ljava/lang/String;Ljava/lang/String;I)V\u{0}");
+///      env.get_method_id(class, "javaMethodName", &sig)
+///  }
+///
+///  fn _rust_method_name_call(env: Env, this: &JFoo, method_id: JMethodID, a: impl AsRef<JString>, b: impl AsRef<JString>, c: jint) -> Result<void> {
+///      let jni_args = {
+///          [
+///              jni::sys::jvalue {
+///                  l: { <crate::objects::JObject as crate::refs::Reference>::as_raw(a.as_ref()) },
+///              },
+///              jni::sys::jvalue {
+///                  l: { <crate::objects::JObject as crate::refs::Reference>::as_raw(b.as_ref()) },
+///              },
+///              jni::sys::jvalue {
+///                  i: (c as jni::sys::jint),
+///              },
+///          ]
+///      };
+///      jni_call_check_ex!(env, v1_1, CallVoidMethodA, this, method_id, jni_args)
+///  }
 macro_rules! jgen_bind_method {
     (
         this: $this:path,
@@ -1308,6 +1315,76 @@ macro_rules! jgen_bind_method {
             ( $($rty)+ )
         );
     };
+}
+
+/// Emits a cacheable method IDs API struct, lookup APIs and call APIs for a given set of methods
+///
+/// # Usage
+///
+/// jgen_bind_api!{
+///     JTestAPI,
+///     JTest,
+///     methods = {
+///         get_message = { name = "getMessage", sig = () -> java.lang.String,
+///         },
+///         set_message = {
+///             name = "setMessage",
+///             sig = (java.lang.String as JString) -> void,
+///         }
+///     },
+///     static_methods = {
+///         example_static = {
+///             name = "exampleStatic",
+///             sig = (jint, java.lang.String as JString) -> jboolean,
+///         }
+///     },
+///     native_methods = {
+///         example_native = {
+///             name = "exampleNative",
+///             sig = (jint, java.lang.String as JString) -> jboolean,
+///             fn = example_native_impl,
+///         }
+///     }
+/// }
+///
+/// # Outputs
+///
+/// pub struct JTestAPI {
+///     class: Global<JClass>,
+///     get_message: JMethodID,
+///     set_message: JMethodID,
+///     example_static: JStaticMethodID,
+/// }
+/// impl JTestAPI {
+///    pub fn get(env: &mut Env) -> Result<&'static Self> {
+///         let static API: OnceCell<JTestAPI> = OnceCell::new();
+///         API.get_or_try_init(|| {
+///            let class = env.find_class("com/example/Test")?.into_global(env);
+///            let native_methods: &[JNativeMethod] = &[
+///               JNativeMethod {
+///                   name: "exampleNative",
+///                   sig: "(ILjava/lang/String;)Z",
+///                   fn: example_native_impl,
+///               }
+///            ];
+///            env.register_native_methods(&class, native_methods)?;
+///            Ok(JTestAPI {
+///                class: env.new_global_ref(class.as_ref())?,
+///                get_message: env.get_method_id(&class, "getMessage", "()Ljava/lang/String;")?,
+///                set_message: env.get_method_id(&class, "setMessage", "(Ljava/lang/String;)V")?,
+///                 example_static: env.get_static_method_id(&class, "exampleStatic", "(ILjava/lang/String;)Z")?,
+///            })
+///         })
+///    }
+/// }
+///
+/// impl JTest {
+///     pub fn get_message(&self, env: &mut Env) -> Result<JString> {
+///          let api = JTestAPI::get(env)?;
+///          _get_message_call(env, self, api.get_message)
+/// }
+macro_rules! jgen_bind_methods {
+    () => {};
 }
 
 // ------------------
