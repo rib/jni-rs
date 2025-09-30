@@ -530,7 +530,7 @@ macro_rules! __jsig_normalize_suffix_array_then {
     };
 }
 
-// Push one normalized arg into accumulator and continue munching.
+/// Push one normalized arg into accumulator and continue munching.
 macro_rules! __jsig_normalize_args_then__push {
     ( ( $($norm:tt)+ ), $cb:tt, @ $mode:ident, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident, $($rest:tt)* ) => {
         __jsig_normalize_args_then__munch!{ @ $mode $cb, ( $($acc)* $n: $($norm)+ , ), ( $($pass)* ), $($rest)* }
@@ -540,8 +540,9 @@ macro_rules! __jsig_normalize_args_then__push {
     };
 }
 
-// Internal muncher that uses __jsig_normalize_type_then per argument type and accumulates a normalized list.
-// Signature carries a mode (@ with_pass | @ no_pass) and a "( $pass )" group that is forwarded unchanged.
+/// Internal muncher that uses __jsig_normalize_type_then per argument type and accumulates a normalized list.
+///
+/// Signature carries a mode (@ with_pass | @ no_pass) and a "( $pass )" group that is forwarded unchanged.
 macro_rules! __jsig_normalize_args_then__munch {
     // End of list (with pass)
     ( @ with_pass $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)+ ) ) => {
@@ -799,8 +800,9 @@ macro_rules! __jsig_normalize_args_ret_then {
     };
 }
 
-// Build signature (literal vs format) for NORMALIZED args/ret.
-
+/// Compose a JNI signature as a string literal
+///
+/// Returns a `Cow::Borrowed`
 macro_rules! __jsig_emit_sig_literal {
     ( ( $( $n:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* )
       -> ( $rk:ident ( $($rt:tt)* ) $( as rust ( $($ret_as:tt)+ ) )? )
@@ -814,6 +816,10 @@ macro_rules! __jsig_emit_sig_literal {
         ))
     };
 }
+
+/// Compose a JNI signature dynamically into a `String`
+///
+/// Returns a `Cow::Owned`
 macro_rules! __jsig_emit_sig_dynamic_owned {
     ( ( $( $n:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* )
       -> ( $rk:ident ( $($rt:tt)* ) $( as rust ( $($ret_as:tt)+ ) )? )
@@ -958,7 +964,7 @@ macro_rules! __jsig_args_to_jvalue_array {
     }};
 }
 
-// Parameter & return Rust types from normalized forms
+/// Derive a Rust method argument type from a normalized type
 macro_rules! __jgen_emit_rust_method_arg_type {
     ( prim ( void ) ) => {
         compile_error!("'void' is not a valid parameter type");
@@ -973,6 +979,8 @@ macro_rules! __jgen_emit_rust_method_arg_type {
         impl AsRef<$as_ty>
     };
 }
+
+/// Derive a Rust method return type from a normalized type
 macro_rules! __jgen_emit_rust_return_type {
     ( prim ( void ) ) => {
         ()
@@ -988,6 +996,7 @@ macro_rules! __jgen_emit_rust_return_type {
     };
 }
 
+/// Emit a JNI call to a method with the given normalized return type
 macro_rules! __jgen_emit_jni_sys_call {
     (
         $env:expr, $this:expr, $method_id:expr, $jni_args:expr,
@@ -1158,6 +1167,7 @@ macro_rules! __jgen_emit_jni_sys_call {
     };
 }
 
+/// Emit a method ID lookup function for the given method name and signature
 macro_rules! __jgen_emit_lookup_method_fn {
     (
         $this:path,
