@@ -747,6 +747,58 @@ macro_rules! __jsig_normalize_args_then {
     };
 }
 
+/// Shim that routes from return type normalization to the real callback, accepting both normalized args and ret
+macro_rules! __then_args_ret_expr {
+    ( ( $($norm_ret:tt)+ ), $real_cb:tt, ( $($norm_args:tt)* ) $(, $rest:tt )* ) => {
+        $real_cb!( ( $($norm_args)* ), ( $($norm_ret)+ ) $(, $rest )* )
+    };
+}
+/// Shim that routes from return type normalization to the real callback, accepting both normalized args and ret
+macro_rules! __then_args_ret_item {
+    ( ( $($norm_ret:tt)+ ), $real_cb:tt, ( $($norm_args:tt)* ) $(, $rest:tt )* ) => {
+        $real_cb!( ( $($norm_args)* ), ( $($norm_ret)+ ) $(, $rest )* );
+    };
+}
+
+/// Shim that forwards normalized args to return type normalization
+macro_rules! __args_then_ret_expr {
+    ( ( $($norm_args:tt)* ), $real_cb:tt, ( $($raw_ret:tt)+ ) $(, $rest:tt )* ) => {
+        __jsig_normalize_ret_then!( @ expr __then_args_ret_expr, ( $($raw_ret)+ ), $real_cb, ( $($norm_args)* ) $(, $rest )* )
+    };
+}
+macro_rules! __args_then_ret_item {
+    ( ( $($norm_args:tt)* ), $real_cb:tt, ( $($raw_ret:tt)+ ) $(, $rest:tt )* ) => {
+        __jsig_normalize_ret_then!( @ item __then_args_ret_item, ( $($raw_ret)+ ), $real_cb, ( $($norm_args)* ) $(, $rest )* );
+    };
+}
+
+/// Normalize both arguments and return type, then invoke a callback macro that expects both
+///
+/// # Usage
+///
+///  - `__jsig_normalize_args_ret_then!(@expr CB, ( a: TyA, b: TyB, ... ), ( RetTy ) [, extra tokens...])`
+///  - `__jsig_normalize_args_ret_then!(@item CB, ( a: TyA, b: TyB, ... ), ( RetTy ) [, extra tokens...])`
+///
+/// Add @expr | @item to control whether the callback emits an expression or items.
+///
+/// # Callback signature
+///
+/// The callback will be invoked as: `CB!( ( normalized_args... ), ( normalized_ret ) [, extra tokens...] )`
+macro_rules! __jsig_normalize_args_ret_then {
+    ( @ expr $cb:tt, ( $($args:tt)* ), ( $($ret:tt)+ ), $($pass:tt)* ) => {
+        __jsig_normalize_args_then!( @ expr __args_then_ret_expr, ( $($args)* ), $cb, ( $($ret)+ ), $($pass)* )
+    };
+    ( @ item $cb:tt, ( $($args:tt)* ), ( $($ret:tt)+ ), $($pass:tt)* ) => {
+        __jsig_normalize_args_then!( @ item __args_then_ret_item, ( $($args)* ), $cb, ( $($ret)+ ), $($pass)* );
+    };
+    ( @ expr $cb:tt, ( $($args:tt)* ), ( $($ret:tt)+ ) ) => {
+        __jsig_normalize_args_then!( @ expr __args_then_ret_expr, ( $($args)* ), $cb, ( $($ret)+ ) )
+    };
+    ( @ item $cb:tt, ( $($args:tt)* ), ( $($ret:tt)+ ) ) => {
+        __jsig_normalize_args_then!( @ item __args_then_ret_item, ( $($args)* ), $cb, ( $($ret)+ ) );
+    };
+}
+
 // Build signature (literal vs format) for NORMALIZED args/ret.
 
 macro_rules! __jsig_emit_sig_literal {
@@ -1182,28 +1234,28 @@ macro_rules! __jgen_emit_call_method_fn__with_norm_args_ret {
 macro_rules! __jgen_emit_call_method_fn__with_norm_args_ret__shim {
     // Primitive return types (including void) use &Env
     (
+        ( $( $nargs:tt )* ),
         ( prim ( $($p:tt)+ ) ),
         $this:path,
-        $rname:ident,
-        ( $( $nargs:tt )* )
+        $rname:ident
     ) => {
         __jgen_emit_call_method_fn__with_norm_args_ret!( &Env, $this, $rname, ( $( $nargs )* ), ( prim( $($p)+ ) ) );
     };
     // Object return types use &mut Env
     (
+        ( $( $nargs:tt )* ),
         ( obj ( $($rt:tt)+ ) as rust ( $($ret_as:tt)+ ) ),
         $this:path,
-        $rname:ident,
-        ( $( $nargs:tt )* )
+        $rname:ident
     ) => {
         __jgen_emit_call_method_fn__with_norm_args_ret!( &mut Env, $this, $rname, ( $( $nargs )* ), ( obj( $($rt)+ ) as rust( $($ret_as)+ ) ) );
     };
     // Rust return types use &mut Env
     (
+        ( $( $nargs:tt )* ),
         ( rust ( $($ret_as:tt)+ ) ),
         $this:path,
-        $rname:ident,
-        ( $( $nargs:tt )* )
+        $rname:ident
     ) => {
         __jgen_emit_call_method_fn__with_norm_args_ret!( &mut Env, $this, $rname, ( $( $nargs )* ), ( rust( $($ret_as)+ ) ) );
     };
@@ -1227,7 +1279,7 @@ macro_rules! __jgen_emit_call_method_fn {
         ( $($args:tt)* ),
         ( $($ret:tt)+ )
     ) => {
-        __jsig_normalize_args_then!( @item __jgen_emit_call_method_fn__with_norm_args, ( $($args)* ), $this, $rname, ( $($ret)+ ) );
+        __jsig_normalize_args_ret_then!( @ item __jgen_emit_call_method_fn__with_norm_args_ret__shim, ( $($args)* ), ( $($ret)+ ), $this, $rname );
     };
 }
 
