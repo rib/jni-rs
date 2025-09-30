@@ -709,7 +709,7 @@ See the jni-rs Env documentation for more details.
             Err(e) => return Err(e),
         };
 
-        let class: &JClass = class.as_ref();
+        let class: &JClass = &class;
         self.is_instance_of_class(obj, class)
     }
 
@@ -840,7 +840,7 @@ See the jni-rs Env documentation for more details.
     // (currently it just needs the `&mut self` for the sake of `Desc<JClass>::lookup`)
     fn throw_new_optional(&self, class: &JClass, msg: Option<&JNIStr>) -> Result<()> {
         let throwable_class = JThrowable::lookup_class(self, LoaderContext::None)?;
-        let throwable_class: &JClass = throwable_class.as_ref();
+        let throwable_class: &JClass = &throwable_class;
 
         if !self.is_assignable_from_class(class.as_ref(), throwable_class)? {
             return Err(Error::WrongObjectType);
