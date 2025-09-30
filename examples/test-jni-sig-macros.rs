@@ -1261,17 +1261,6 @@ macro_rules! __jgen_emit_call_method_fn__with_norm_args_ret__shim {
     };
 }
 
-macro_rules! __jgen_emit_call_method_fn__with_norm_args {
-    (
-        ( $( $nargs:tt )* ),
-        $this:path,
-        $rname:ident,
-        ( $($raw_ret:tt)+ )
-    ) => {
-        __jsig_normalize_ret_then!( @ item __jgen_emit_call_method_fn__with_norm_args_ret__shim, ( $($raw_ret)+ ), $this, $rname, ( $( $nargs )* ) );
-    };
-}
-
 macro_rules! __jgen_emit_call_method_fn {
     (
         $this:path,
