@@ -787,13 +787,13 @@ macro_rules! build_sig_literal {
     ( ( $( $n:ident : $ak:ident ( $($at:tt)* ) $( as rust ( $($aas:tt)+ ) )? ),* )
       -> ( $rk:ident ( $($rt:tt)* ) $( as rust ( $($ret_as:tt)+ ) )? )
     ) => {
-        String::from(concat!(
+        concat!(
             "(",
             $( jdesc!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ) ),*,
             ")",
             jdesc!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? ),
             "\0"
-        ))
+        )
     };
 }
 macro_rules! build_sig_format {
@@ -823,14 +823,47 @@ macro_rules! build_sig_format {
 
 // ---------- helpers to build lookup signature from normalized args/ret ----------
 
+// Helper to recursively check if any type is rust(...) and choose callback
+macro_rules! _lookup_sig_from_norm_check_args {
+    // Base case: no more args, check return type with original args preserved
+    ( (), ( $($nret:tt)* ), $literal_cb:tt, $format_cb:tt, ( $($orig_args:tt)* ) ) => {
+        _lookup_sig_from_norm_check_ret!( ( $($nret)* ), $literal_cb, $format_cb, ( $($orig_args)* ) )
+    };
+    // Recursive case: check first arg, continue with rest
+    ( ( $first_name:ident : rust ( $($first_type:tt)* ) , $($rest_args:tt)* ), ( $($nret:tt)* ), $literal_cb:tt, $format_cb:tt, ( $($orig_args:tt)* ) ) => {
+        // Found rust(...) type, use format callback
+        $format_cb!( ( $($orig_args)* ) -> ( $($nret)* ) )
+    };
+    // Recursive case: non-rust arg, continue checking
+    ( ( $first_name:ident : $first_kind:ident ( $($first_type:tt)* ) $( as rust ( $($first_as:tt)+ ) )? , $($rest_args:tt)* ), ( $($nret:tt)* ), $literal_cb:tt, $format_cb:tt, ( $($orig_args:tt)* ) ) => {
+        _lookup_sig_from_norm_check_args!( ( $($rest_args)* ), ( $($nret)* ), $literal_cb, $format_cb, ( $($orig_args)* ) )
+    };
+    // Handle single arg without trailing comma
+    ( ( $first_name:ident : rust ( $($first_type:tt)* ) ), ( $($nret:tt)* ), $literal_cb:tt, $format_cb:tt, ( $($orig_args:tt)* ) ) => {
+        // Found rust(...) type, use format callback
+        $format_cb!( ( $($orig_args)* ) -> ( $($nret)* ) )
+    };
+    ( ( $first_name:ident : $first_kind:ident ( $($first_type:tt)* ) $( as rust ( $($first_as:tt)+ ) )? ), ( $($nret:tt)* ), $literal_cb:tt, $format_cb:tt, ( $($orig_args:tt)* ) ) => {
+        _lookup_sig_from_norm_check_args!( ( ), ( $($nret)* ), $literal_cb, $format_cb, ( $($orig_args)* ) )
+    };
+}
+
+// Helper to check return type
+macro_rules! _lookup_sig_from_norm_check_ret {
+    // rust(...) return type, use format callback
+    ( ( rust ( $($ret_type:tt)* ) ), $literal_cb:tt, $format_cb:tt, ( $($orig_args:tt)* ) ) => {
+        $format_cb!( ( $($orig_args)* ) -> ( rust( $($ret_type)* ) ) )
+    };
+    // Non-rust return type, use literal callback
+    ( ( $ret_kind:ident ( $($ret_type:tt)* ) $( as rust ( $($ret_as:tt)+ ) )? ), $literal_cb:tt, $format_cb:tt, ( $($orig_args:tt)* ) ) => {
+        $literal_cb!( ( $($orig_args)* ) -> ( $ret_kind( $($ret_type)* ) $( as rust( $($ret_as)+ ) )? ) )
+    };
+}
+
 // Given normalized args and ret, produce the final signature expr
 macro_rules! _lookup_sig_from_norm {
     ( ( $($nargs:tt)* ), ( $($nret:tt)* ) ) => {
-        if any_rust!( ( $($nargs)* ), ( $($nret)* ) ) == 0 {
-            build_sig_literal!( ( $($nargs)* ) -> ( $($nret)* ) )
-        } else {
-            build_sig_format!( ( $($nargs)* ) -> ( $($nret)* ) )
-        }
+        _lookup_sig_from_norm_check_args!( ( $($nargs)* ), ( $($nret)* ), build_sig_literal, build_sig_format, ( $($nargs)* ) )
     };
 }
 
@@ -1644,7 +1677,6 @@ fn main() {
     TODO:
     - Allow jvoid or () as aliases for void
     - make sure we get a compiler error if void is used as a param type
-    - Output only one literal or format signature without a runtime if statement.
      */
 
     // Test the new test_lookup_sig macro with simple primitive signature
