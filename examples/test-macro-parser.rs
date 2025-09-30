@@ -293,8 +293,8 @@ macro_rules! __def_ref_extract {
         $crate::__def_ref_emit! { $($result)* }
     };
 
-    // Extract type
-    ([(type, $value:ident)$($rest:tt)*] {
+    // Extract type - found at start of list
+    ([(type, $value:ident) $($rest:tt)*] {
         type = $old:ident, $($other:tt)*
     }) => {
         $crate::__def_ref_extract! {
@@ -303,8 +303,16 @@ macro_rules! __def_ref_extract {
         }
     };
 
-    // Extract class
-    ([(class, $value:expr)$($rest:tt)*] {
+    // Skip unknown pairs for now
+    ([($key:tt, $val:tt) $($rest:tt)*] { $($result:tt)* }) => {
+        $crate::__def_ref_extract! {
+            [$($rest)*]
+            { $($result)* }
+        }
+    };
+
+    // Extract class - found at start of list
+    ([(class, $value:expr) $($rest:tt)*] {
         class = $old:expr, $($other:tt)*
     }) => {
         $crate::__def_ref_extract! {
@@ -313,8 +321,8 @@ macro_rules! __def_ref_extract {
         }
     };
 
-    // Extract raw
-    ([(raw, $value:ident)$($rest:tt)*] {
+    // Extract raw - found at start of list
+    ([(raw, $value:ident) $($rest:tt)*] {
         raw = $old:ident, $($other:tt)*
     }) => {
         $crate::__def_ref_extract! {
@@ -323,8 +331,8 @@ macro_rules! __def_ref_extract {
         }
     };
 
-    // Extract api
-    ([(api, $value:ident)$($rest:tt)*] {
+    // Extract api - found at start of list
+    ([(api, $value:ident) $($rest:tt)*] {
         api = $old:ident, $($other:tt)*
     }) => {
         $crate::__def_ref_extract! {
@@ -333,8 +341,8 @@ macro_rules! __def_ref_extract {
         }
     };
 
-    // Extract init (already wrapped with __drt_Closure)
-    ([(init, $value:tt)$($rest:tt)*] {
+    // Extract init - found at start of list (wrapped with extra parentheses around __drt_Closure)
+    ([(init, ($value:tt)) $($rest:tt)*] {
         init = __drt_Closure($old:tt), $($other:tt)*
     }) => {
         $crate::__def_ref_extract! {
@@ -343,8 +351,8 @@ macro_rules! __def_ref_extract {
         }
     };
 
-    // Extract init_with_loader (already wrapped with __drt_Closure)
-    ([(init_with_loader, $value:tt)$($rest:tt)*] {
+    // Extract init_with_loader - found at start of list (wrapped with extra parentheses around __drt_Closure)
+    ([(init_with_loader, ($value:tt)) $($rest:tt)*] {
         init_with_loader = __drt_Closure($old:tt), $($other:tt)*
     }) => {
         $crate::__def_ref_extract! {
@@ -415,7 +423,7 @@ macro_rules! __def_ref_extract {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __def_ref_parse {
-    // Done: extract final values and emit  
+    // Done: extract final values and emit
     (@parse [$($pairs:tt)*]) => {
         $crate::__def_ref_extract! {
             [$($pairs)*]
@@ -437,7 +445,7 @@ macro_rules! __def_ref_parse {
 
 
 
-    // Start parsing with empty accumulator
+    // Finished parsing tokens, move to extraction
     (@parse_tokens [$($acc:tt)*]) => {
         $crate::__def_ref_parse! {
             @parse [$($acc)*]
@@ -482,28 +490,28 @@ macro_rules! __def_ref_parse {
     // Parse tokens: init = <expr>, with comma - wrap with __drt_Closure to avoid comma ambiguity
     (@parse_tokens [$($acc:tt)*] init = $value:expr, $($rest:tt)*) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (init, __drt_Closure(($value)))] $($rest)*
+            @parse_tokens [$($acc)* (init, (__drt_Closure(($value))))] $($rest)*
         }
     };
 
     // Parse tokens: init = <expr>, no comma (end) - wrap with __drt_Closure to avoid comma ambiguity
     (@parse_tokens [$($acc:tt)*] init = $value:expr) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (init, __drt_Closure(($value)))]
+            @parse_tokens [$($acc)* (init, (__drt_Closure(($value))))]
         }
     };
 
     // Parse tokens: init_with_loader = <expr>, with comma - wrap with __drt_Closure to avoid comma ambiguity
     (@parse_tokens [$($acc:tt)*] init_with_loader = $value:expr, $($rest:tt)*) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (init_with_loader, __drt_Closure(($value)))] $($rest)*
+            @parse_tokens [$($acc)* (init_with_loader, (__drt_Closure(($value))))] $($rest)*
         }
     };
 
     // Parse tokens: init_with_loader = <expr>, no comma (end) - wrap with __drt_Closure to avoid comma ambiguity
     (@parse_tokens [$($acc:tt)*] init_with_loader = $value:expr) => {
         $crate::__def_ref_parse! {
-            @parse_tokens [$($acc)* (init_with_loader, __drt_Closure(($value)))]
+            @parse_tokens [$($acc)* (init_with_loader, (__drt_Closure(($value))))]
         }
     };
 
@@ -696,10 +704,10 @@ fn main() {
     define_reference_type!(
         type = Test1,
         class = "java.lang.Object",
-        init = (|_env, _class| {
+        init = |_env, _class| {
             println!("Custom init called");
             Ok(Custom0API)
-        }),
+        },
         raw = jstring,
         api = Custom0API
     );
