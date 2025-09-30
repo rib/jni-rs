@@ -1668,6 +1668,12 @@ fn main() {
     let sig = print_jni_sig_for!((a: jint, b: [java.lang.String]) -> [java.lang.String]);
     assert_eq!(sig, "(I[Ljava/lang/String;)[Ljava/lang/String;\0");
 
+    let sig = print_jni_sig_for!((a: jint, b: [java.lang.String]) -> java.lang.String[]);
+    assert_eq!(sig, "(I[Ljava/lang/String;)[Ljava/lang/String;\0");
+
+    let sig = print_jni_sig_for!((a: jint, b: [java.lang.String]) -> java.lang.String[][]);
+    assert_eq!(sig, "(I[Ljava/lang/String;)[[Ljava/lang/String;\0");
+
     println!("\n=== Testing Individual Descriptors ===");
     // Test that primitive arrays now parse correctly
     println!("1D Primitive array descriptors:");
