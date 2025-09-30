@@ -335,26 +335,63 @@ macro_rules! jnorm_type_then {
         $cb!{ ( obj( [ $($arr)+ ] ) as rust( rust_type_for_java_array_default!([ $($arr)+ ]) ) ) $(, $($pass)* )? }
     };
 
-    // Suffix form → rewrite to bracket form
-    ( $cb:tt, ( $first:ident $( . $seg:ident )+ $( :: $inner:ident )* [ ] $($tail:tt)* ) $(, $($pass:tt)* )? ) => {
-        jnorm_type_then!{@suffix $cb, ( [ $first $( . $seg )+ $( :: $inner )* ] ), $($tail)* $(, $($pass)* )? }
+    // Multi-dimensional suffix forms with explicit as clause
+    ( $cb:tt, ( $first:ident $( . $seg:ident )+ $( :: $inner:ident )* [ ] [ ] [ ] as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ [ [ $first $( . $seg )+ $( :: $inner )* ] ] ] ) as rust( $as_ty ) ) $(, $($pass)* )? }
     };
-    ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* [ ] $($tail:tt)* ) $(, $($pass:tt)* )? ) => {
-        jnorm_type_then!{@suffix $cb, ( [ . $outer $( :: $inner )* ] ), $($tail)* $(, $($pass)* )? }
+    ( $cb:tt, ( $first:ident $( . $seg:ident )+ $( :: $inner:ident )* [ ] [ ] as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ [ $first $( . $seg )+ $( :: $inner )* ] ] ) as rust( $as_ty ) ) $(, $($pass)* )? }
     };
-    ( $cb:tt, ( $p:ident [ ] $($tail:tt)* ) $(, $($pass:tt)* )? ) => {
-        jnorm_type_then!{@suffix $cb, ( [ $p ] ), $($tail)* $(, $($pass)* )? }
+    ( $cb:tt, ( $first:ident $( . $seg:ident )+ $( :: $inner:ident )* [ ] as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ $first $( . $seg )+ $( :: $inner )* ] ) as rust( $as_ty ) ) $(, $($pass)* )? }
     };
-    // Internal suffix recursion
-    ( @suffix $cb:tt, ( [ $($acc:tt)+ ] ), [ ] $($tail:tt)* $(, $($pass:tt)* )? ) => {
-        jnorm_type_then!{@suffix $cb, ( [ [ $($acc)+ ] ] ), $($tail)* $(, $($pass)* )? }
+    ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* [ ] [ ] [ ] as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ [ [ . $outer $( :: $inner )* ] ] ] ) as rust( $as_ty ) ) $(, $($pass)* )? }
     };
-    ( @suffix $cb:tt, ( [ $($acc:tt)+ ] ), as $as_ty:ty $(, $($pass:tt)* )? ) => {
-        $cb!{ ( obj( [ $($acc)+ ] ) as rust( $as_ty ) ) $(, $($pass)* )? }
+    ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* [ ] [ ] as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ [ . $outer $( :: $inner )* ] ] ) as rust( $as_ty ) ) $(, $($pass)* )? }
     };
-    ( @suffix $cb:tt, ( [ $($acc:tt)+ ] ), $(, $($pass:tt)* )? ) => {
-        $cb!{ ( obj( [ $($acc)+ ] ) as rust( rust_type_for_java_array_default!([ $($acc)+ ]) ) ) $(, $($pass)* )? }
+    ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* [ ] as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ . $outer $( :: $inner )* ] ) as rust( $as_ty ) ) $(, $($pass)* )? }
     };
+    ( $cb:tt, ( $p:ident [ ] [ ] [ ] as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ [ [ $p ] ] ] ) as rust( $as_ty ) ) $(, $($pass)* )? }
+    };
+    ( $cb:tt, ( $p:ident [ ] [ ] as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ [ $p ] ] ) as rust( $as_ty ) ) $(, $($pass)* )? }
+    };
+    ( $cb:tt, ( $p:ident [ ] as $as_ty:ty ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ $p ] ) as rust( $as_ty ) ) $(, $($pass)* )? }
+    };
+    // Multi-dimensional suffix forms (without explicit as clause)
+    ( $cb:tt, ( $first:ident $( . $seg:ident )+ $( :: $inner:ident )* [ ] [ ] [ ] ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ [ [ $first $( . $seg )+ $( :: $inner )* ] ] ] ) as rust( rust_type_for_java_array_default!([ [ [ $first $( . $seg )+ $( :: $inner )* ] ] ]) ) ) $(, $($pass)* )? }
+    };
+    ( $cb:tt, ( $first:ident $( . $seg:ident )+ $( :: $inner:ident )* [ ] [ ] ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ [ $first $( . $seg )+ $( :: $inner )* ] ] ) as rust( rust_type_for_java_array_default!([ [ $first $( . $seg )+ $( :: $inner )* ] ]) ) ) $(, $($pass)* )? }
+    };
+    ( $cb:tt, ( $first:ident $( . $seg:ident )+ $( :: $inner:ident )* [ ] ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ $first $( . $seg )+ $( :: $inner )* ] ) as rust( rust_type_for_java_array_default!([ $first $( . $seg )+ $( :: $inner )* ]) ) ) $(, $($pass)* )? }
+    };
+    ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* [ ] [ ] [ ] ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ [ [ . $outer $( :: $inner )* ] ] ] ) as rust( rust_type_for_java_array_default!([ [ [ . $outer $( :: $inner )* ] ] ]) ) ) $(, $($pass)* )? }
+    };
+    ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* [ ] [ ] ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ [ . $outer $( :: $inner )* ] ] ) as rust( rust_type_for_java_array_default!([ [ . $outer $( :: $inner )* ] ]) ) ) $(, $($pass)* )? }
+    };
+    ( $cb:tt, ( . $outer:ident $( :: $inner:ident )* [ ] ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ . $outer $( :: $inner )* ] ) as rust( rust_type_for_java_array_default!([ . $outer $( :: $inner )* ]) ) ) $(, $($pass)* )? }
+    };
+    ( $cb:tt, ( $p:ident [ ] [ ] [ ] ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ [ [ $p ] ] ] ) as rust( rust_type_for_java_array_default!([ [ [ $p ] ] ]) ) ) $(, $($pass)* )? }
+    };
+    ( $cb:tt, ( $p:ident [ ] [ ] ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ [ $p ] ] ) as rust( rust_type_for_java_array_default!([ [ $p ] ]) ) ) $(, $($pass)* )? }
+    };
+    ( $cb:tt, ( $p:ident [ ] ) $(, $($pass:tt)* )? ) => {
+        $cb!{ ( obj( [ $p ] ) as rust( rust_type_for_java_array_default!([ $p ]) ) ) $(, $($pass)* )? }
+    };
+
 
     // ----- Rust reference type like &JObject, &JString etc -----
     ( $cb:tt, ( & $rust:ty ) $(, $($pass:tt)* )? ) => { $cb!{ ( rust( $rust ) ) $(, $($pass)* )? } };
@@ -1672,6 +1709,9 @@ fn main() {
     assert_eq!(sig, "(I[Ljava/lang/String;)[Ljava/lang/String;\0");
 
     let sig = print_jni_sig_for!((a: jint, b: [java.lang.String]) -> java.lang.String[][]);
+    assert_eq!(sig, "(I[Ljava/lang/String;)[[Ljava/lang/String;\0");
+
+    let sig = print_jni_sig_for!((a: jint, b: java.lang.String[]) -> java.lang.String[][]);
     assert_eq!(sig, "(I[Ljava/lang/String;)[[Ljava/lang/String;\0");
 
     println!("\n=== Testing Individual Descriptors ===");
