@@ -456,31 +456,6 @@ macro_rules! __jsig_normalize_ret_then {
     };
 }
 
-/// Normalize an args list, then invoke a callback macro that expects normalized args
-///
-/// # Usage
-///
-///  - `__jsig_normalize_args_then!(@expr CB, ( a: TyA, b: TyB, ... ) [, extra tokens...])`
-///  - `__jsig_normalize_args_then!(@item CB, ( a: TyA, b: TyB, ... ) [, extra tokens...])`
-///
-/// Add @expr | @item to control whether the callback emits an expression or items.
-macro_rules! __jsig_normalize_args_then {
-    // Explicit context + pass
-    ( @ expr $cb:tt, ( $($args:tt)* ), $($pass:tt)+ ) => {
-        __jsig_normalize_args_then_munch!( @ with_pass __then_expr, (), ( $cb, $($pass)+ ), $($args)* )
-    };
-    ( @ item $cb:tt, ( $($args:tt)* ), $($pass:tt)+ ) => {
-        __jsig_normalize_args_then_munch!( @ with_pass __then_item, (), ( $cb, $($pass)+ ), $($args)* );
-    };
-    // Explicit context, no pass
-    ( @ expr $cb:tt, ( $($args:tt)* ) ) => {
-        __jsig_normalize_args_then_munch!( @ no_pass __then_expr, (), ( $cb ), $($args)* )
-    };
-    ( @ item $cb:tt, ( $($args:tt)* ) ) => {
-        __jsig_normalize_args_then_munch!( @ no_pass __then_item, (), ( $cb ), $($args)* );
-    };
-}
-
 /// Helper that consumes a Java-style suffix-array [] without introducing tt/',' ambiguity.
 macro_rules! __jsig_normalize_suffix_array_then {
     // More [] → accumulate and continue
@@ -555,9 +530,19 @@ macro_rules! __jsig_normalize_suffix_array_then {
     };
 }
 
+// Push one normalized arg into accumulator and continue munching.
+macro_rules! __jsig_normalize_args_then__push {
+    ( ( $($norm:tt)+ ), $cb:tt, @ $mode:ident, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident, $($rest:tt)* ) => {
+        __jsig_normalize_args_then__munch!{ @ $mode $cb, ( $($acc)* $n: $($norm)+ , ), ( $($pass)* ), $($rest)* }
+    };
+    ( ( $($norm:tt)+ ), $cb:tt, @ $mode:ident, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident ) => {
+        __jsig_normalize_args_then__munch!{ @ $mode $cb, ( $($acc)* $n: $($norm)+ ), ( $($pass)* ) }
+    };
+}
+
 // Internal muncher that uses __jsig_normalize_type_then per argument type and accumulates a normalized list.
 // Signature carries a mode (@ with_pass | @ no_pass) and a "( $pass )" group that is forwarded unchanged.
-macro_rules! __jsig_normalize_args_then_munch {
+macro_rules! __jsig_normalize_args_then__munch {
     // End of list (with pass)
     ( @ with_pass $cb:tt, ( $($acc:tt)* ), ( $($pass:tt)+ ) ) => {
         $cb!{ ( $($acc)* ), $($pass)+ }
@@ -575,7 +560,7 @@ macro_rules! __jsig_normalize_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            __jsig_normalize_args_then_push, ( & [ [ $($inner)+ ] ] ),
+            __jsig_normalize_args_then__push, ( & [ [ $($inner)+ ] ] ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -586,7 +571,7 @@ macro_rules! __jsig_normalize_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            __jsig_normalize_args_then_push, ( & [ $($inner)+ ] ),
+            __jsig_normalize_args_then__push, ( & [ $($inner)+ ] ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -597,7 +582,7 @@ macro_rules! __jsig_normalize_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            __jsig_normalize_args_then_push, ( & $rust ),
+            __jsig_normalize_args_then__push, ( & $rust ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -608,7 +593,7 @@ macro_rules! __jsig_normalize_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            __jsig_normalize_args_then_push, ( [ $($arr)+ ] as $as_ty ),
+            __jsig_normalize_args_then__push, ( [ $($arr)+ ] as $as_ty ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -619,7 +604,7 @@ macro_rules! __jsig_normalize_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            __jsig_normalize_args_then_push, ( [ $($arr)+ ] ),
+            __jsig_normalize_args_then__push, ( [ $($arr)+ ] ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -630,7 +615,7 @@ macro_rules! __jsig_normalize_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            __jsig_normalize_args_then_push, ( $first $( . $seg )+ $( :: $inner )* as $as_ty ),
+            __jsig_normalize_args_then__push, ( $first $( . $seg )+ $( :: $inner )* as $as_ty ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -641,7 +626,7 @@ macro_rules! __jsig_normalize_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            __jsig_normalize_args_then_push, ( $first $( . $seg )+ $( :: $inner )* ),
+            __jsig_normalize_args_then__push, ( $first $( . $seg )+ $( :: $inner )* ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -652,7 +637,7 @@ macro_rules! __jsig_normalize_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            __jsig_normalize_args_then_push, ( . $outer $( :: $inner )* as $as_ty ),
+            __jsig_normalize_args_then__push, ( . $outer $( :: $inner )* as $as_ty ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -663,7 +648,7 @@ macro_rules! __jsig_normalize_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            __jsig_normalize_args_then_push, ( . $outer $( :: $inner )* ),
+            __jsig_normalize_args_then__push, ( . $outer $( :: $inner )* ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -674,7 +659,7 @@ macro_rules! __jsig_normalize_args_then_munch {
       $(, $($rest:tt)*)?
     ) => {
         __jsig_normalize_type_then!{
-            __jsig_normalize_args_then_push, ( $p ),
+            __jsig_normalize_args_then__push, ( $p ),
             $cb, @ $mode, ( $($acc)* ), ( $($pass)* ), $n $(, $($rest)*)?
         }
     };
@@ -688,7 +673,7 @@ macro_rules! __jsig_normalize_args_then_munch {
       [ ] $($after:tt)*
     ) => {
         __jsig_normalize_suffix_array_then!{
-            __jsig_normalize_args_then_push, $cb, @ $mode,
+            __jsig_normalize_args_then__push, $cb, @ $mode,
             ( $($acc)* ), ( $($pass)* ), $n,
             base( $first $( . $seg )+ $( :: $inner )* ), dims(),
             $($after)*
@@ -702,7 +687,7 @@ macro_rules! __jsig_normalize_args_then_munch {
       [ ] $($after:tt)*
     ) => {
         __jsig_normalize_suffix_array_then!(
-            __jsig_normalize_args_then_push, $cb, @ $mode,
+            __jsig_normalize_args_then__push, $cb, @ $mode,
             ( $($acc)* ), ( $($pass)* ), $n,
             base( . $outer $( :: $inner )* ), dims(),
             $($after)*
@@ -716,7 +701,7 @@ macro_rules! __jsig_normalize_args_then_munch {
       [ ]
     ) => {
         __jsig_normalize_suffix_array_then!{
-            __jsig_normalize_args_then_push, $cb, @ $mode,
+            __jsig_normalize_args_then__push, $cb, @ $mode,
             ( $($acc)* ), ( $($pass)* ), $n,
             base( $p ), dims()
         }
@@ -729,7 +714,7 @@ macro_rules! __jsig_normalize_args_then_munch {
       [ ] $($after:tt)+
     ) => {
         __jsig_normalize_suffix_array_then!{
-            __jsig_normalize_args_then_push, $cb, @ $mode,
+            __jsig_normalize_args_then__push, $cb, @ $mode,
             ( $($acc)* ), ( $($pass)* ), $n,
             base( $p ), dims(),
             $($after)+
@@ -737,13 +722,28 @@ macro_rules! __jsig_normalize_args_then_munch {
     };
 }
 
-// Push one normalized arg into accumulator and continue munching.
-macro_rules! __jsig_normalize_args_then_push {
-    ( ( $($norm:tt)+ ), $cb:tt, @ $mode:ident, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident, $($rest:tt)* ) => {
-        __jsig_normalize_args_then_munch!{ @ $mode $cb, ( $($acc)* $n: $($norm)+ , ), ( $($pass)* ), $($rest)* }
+/// Normalize an args list, then invoke a callback macro that expects normalized args
+///
+/// # Usage
+///
+///  - `__jsig_normalize_args_then!(@expr CB, ( a: TyA, b: TyB, ... ) [, extra tokens...])`
+///  - `__jsig_normalize_args_then!(@item CB, ( a: TyA, b: TyB, ... ) [, extra tokens...])`
+///
+/// Add @expr | @item to control whether the callback emits an expression or items.
+macro_rules! __jsig_normalize_args_then {
+    // Explicit context + pass
+    ( @ expr $cb:tt, ( $($args:tt)* ), $($pass:tt)+ ) => {
+        __jsig_normalize_args_then__munch!( @ with_pass __then_expr, (), ( $cb, $($pass)+ ), $($args)* )
     };
-    ( ( $($norm:tt)+ ), $cb:tt, @ $mode:ident, ( $($acc:tt)* ), ( $($pass:tt)* ), $n:ident ) => {
-        __jsig_normalize_args_then_munch!{ @ $mode $cb, ( $($acc)* $n: $($norm)+ ), ( $($pass)* ) }
+    ( @ item $cb:tt, ( $($args:tt)* ), $($pass:tt)+ ) => {
+        __jsig_normalize_args_then__munch!( @ with_pass __then_item, (), ( $cb, $($pass)+ ), $($args)* );
+    };
+    // Explicit context, no pass
+    ( @ expr $cb:tt, ( $($args:tt)* ) ) => {
+        __jsig_normalize_args_then__munch!( @ no_pass __then_expr, (), ( $cb ), $($args)* )
+    };
+    ( @ item $cb:tt, ( $($args:tt)* ) ) => {
+        __jsig_normalize_args_then__munch!( @ no_pass __then_item, (), ( $cb ), $($args)* );
     };
 }
 
