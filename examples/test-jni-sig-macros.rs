@@ -1270,38 +1270,51 @@ macro_rules! __jgen_emit_call_method_fn {
 
 /// Binds a Java method to Rust by emitting a method ID lookup function and a call function.
 ///
+/// This assumes the existence of an `API` struct named `${this}API` with a `get` method that
+/// returns a cached instance of the struct, which contains a field named `${rname}_method_id`
+/// of type `JMethodID`.
+///
+/// The `this` type must implement `Reference`.
+///
 /// # Usage
 ///
+/// ```
 ///  jgen_bind_method!(
 ///      this: JTest,
 ///      javaMethodName as rust_method_name,
 ///      sig: (a: &JString, b: java.lang.String as JString, c: jint) -> void
 ///  );
+/// ```
 ///
 ///  # Outputs:
 ///
-///  fn _rust_method_name_lookup(env: &mut Env) -> Result<JMethodID> {
-///      let class: &JClass = JTest::lookup_class()?;
-///      let sig = std::borrow::Cow::Borrowed("(Ljava/lang/String;Ljava/lang/String;I)V\u{0}");
-///      env.get_method_id(class, "javaMethodName", &sig)
-///  }
-///
-///  fn _rust_method_name_call(env: Env, this: &JFoo, method_id: JMethodID, a: impl AsRef<JString>, b: impl AsRef<JString>, c: jint) -> Result<void> {
-///      let jni_args = {
-///          [
-///              jni::sys::jvalue {
-///                  l: { <crate::objects::JObject as crate::refs::Reference>::as_raw(a.as_ref()) },
-///              },
-///              jni::sys::jvalue {
-///                  l: { <crate::objects::JObject as crate::refs::Reference>::as_raw(b.as_ref()) },
-///              },
-///              jni::sys::jvalue {
-///                  i: (c as jni::sys::jint),
-///              },
-///          ]
-///      };
-///      jni_call_check_ex!(env, v1_1, CallVoidMethodA, this, method_id, jni_args)
-///  }
+/// ```
+/// impl JTestAPI {
+///     fn _rust_method_name_lookup(env: &mut Env, class: &JClass) -> Result<JMethodID> {
+///         let sig = std::borrow::Cow::Borrowed("(Ljava/lang/String;Ljava/lang/String;I)V\u{0}");
+///         env.get_method_id(class, "javaMethodName", &sig)
+///     }
+/// }
+/// impl JTest {
+///     pub fn rust_method_name(&self, env: Env, a: impl AsRef<JString>, b: impl AsRef<JString>, c: jint) -> Result<()> {
+///         let api = JTestAPI::get(env, &LoaderContext::None)?;
+///         let jni_args = {
+///             [
+///                 jni::sys::jvalue {
+///                     l: { <crate::objects::JObject as crate::refs::Reference>::as_raw(a.as_ref()) },
+///                 },
+///                 jni::sys::jvalue {
+///                     l: { <crate::objects::JObject as crate::refs::Reference>::as_raw(b.as_ref()) },
+///                 },
+///                 jni::sys::jvalue {
+///                     i: (c as jni::sys::jint),
+///                 },
+///             ]
+///         };
+///         jni_call_check_ex!(env, v1_1, CallVoidMethodA, self, api.rust_method_name, jni_args)
+///     }
+/// }
+/// ```
 macro_rules! jgen_bind_method {
     (
         this: $this:path,
