@@ -1003,6 +1003,7 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( prim ( void ) )
     ) => {
         unsafe {
+            use $crate::refs::Reference as _;
             jni_call_check_ex!(
                 $env,
                 v1_1,
@@ -1018,6 +1019,7 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( prim ( jboolean ) )
     ) => {
         unsafe {
+            use $crate::refs::Reference as _;
             jni_call_check_ex!(
                 $env,
                 v1_1,
@@ -1033,6 +1035,7 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( prim ( jbyte ) )
     ) => {
         unsafe {
+            use $crate::refs::Reference as _;
             jni_call_check_ex!(
                 $env,
                 v1_1,
@@ -1048,6 +1051,7 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( prim ( jchar ) )
     ) => {
         unsafe {
+            use $crate::refs::Reference as _;
             jni_call_check_ex!(
                 $env,
                 v1_1,
@@ -1063,6 +1067,7 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( prim ( jshort ) )
     ) => {
         unsafe {
+            use $crate::refs::Reference as _;
             jni_call_check_ex!(
                 $env,
                 v1_1,
@@ -1078,6 +1083,7 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( prim ( jint ) )
     ) => {
         unsafe {
+            use $crate::refs::Reference as _;
             jni_call_check_ex!(
                 $env,
                 v1_1,
@@ -1093,6 +1099,7 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( prim ( jlong ) )
     ) => {
         unsafe {
+            use $crate::refs::Reference as _;
             jni_call_check_ex!(
                 $env,
                 v1_1,
@@ -1108,6 +1115,7 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( prim ( jfloat ) )
     ) => {
         unsafe {
+            use $crate::refs::Reference as _;
             jni_call_check_ex!(
                 $env,
                 v1_1,
@@ -1123,6 +1131,7 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( prim ( jdouble ) )
     ) => {
         unsafe {
+            use $crate::refs::Reference as _;
             jni_call_check_ex!(
                 $env,
                 v1_1,
@@ -1138,6 +1147,7 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( obj  ( $($rt:tt)+ ) as rust ( $as_ty:ty ) )
     ) => {
         unsafe {
+            use $crate::refs::Reference as _;
             let ret_obj: jni::sys::jobject = jni_call_check_ex!(
                 $env,
                 v1_1,
@@ -1154,6 +1164,7 @@ macro_rules! __jgen_emit_jni_sys_call {
         ( rust ( $as_ty:ty ) )
     ) => {
         unsafe {
+            use $crate::refs::Reference as _;
             let ret_obj: jni::sys::jobject = jni_call_check_ex!(
                 $env,
                 v1_1,
@@ -1384,7 +1395,9 @@ macro_rules! jgen_bind_method {
 ///          _get_message_call(env, self, api.get_message)
 /// }
 macro_rules! jgen_bind_methods {
-    () => {};
+    () => {
+        todo!()
+    };
 }
 
 // ------------------
@@ -1392,33 +1405,33 @@ macro_rules! jgen_bind_methods {
 // ------------------
 
 // ----------- Minimal placeholders so this compiles in isolation -----------
-use std::borrow::Cow;
+use std::{borrow::Cow, ops::Deref};
+
+mod sys {
+    pub use jni::sys::{jboolean, jbyte, jchar, jdouble, jfloat, jint, jlong, jshort, jvalue};
+}
 
 type Result<T> = core::result::Result<T, ()>;
 type JMethodID = *mut jni::sys::_jmethodID;
 
-#[derive(Default)]
-struct JTest;
-
-impl AsRef<JTest> for JTest {
-    fn as_ref(&self) -> &JTest {
-        self
+pub struct Global<T>(T);
+impl Deref for Global<JClass> {
+    type Target = JClass;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
-impl Reference for JTest {
-    fn class_name() -> Cow<'static, str> {
-        Cow::Borrowed("com.example.Test")
-    }
-
-    fn as_raw(&self) -> jni::sys::jobject {
-        std::ptr::null_mut()
-    }
-}
 #[derive(Default)]
 pub struct Env;
 
 impl Env {
+    fn new_global_ref<T>(&self, _obj: &T) -> Result<Global<T>>
+    where
+        T: crate::refs::Reference,
+    {
+        Ok(Global(T::null()))
+    }
     fn get_method_id(&mut self, _class: &JClass, _name: &str, _sig: &str) -> Result<JMethodID> {
         Ok(std::ptr::null_mut())
     }
@@ -1439,28 +1452,46 @@ impl JTest {
     }
 }
 
-mod sys {
-    pub use jni::sys::{jboolean, jbyte, jchar, jdouble, jfloat, jint, jlong, jshort, jvalue};
-}
 mod refs {
-    pub(crate) use super::Reference;
-}
-trait Reference {
-    /// The fully qualified class name of the Java class represented by this
-    /// reference.
-    ///
-    /// The class name is expected to be dot-separated, in the same format as
-    /// `Class.getName()` and suitable for passing to `Class.forName()`
-    ///
-    /// For example: `"com.example.MyClass"`
-    ///
-    /// Note: this format is very similar to the FindClass naming conventions,
-    /// except for the use of dots instead of slashes.
-    ///
-    /// An array of objects would look like: "[Ljava.lang.Object;" An array of
-    /// integers would look like: "[I"
-    fn class_name() -> Cow<'static, str>;
-    fn as_raw(&self) -> jni::sys::jobject;
+    use crate::objects::JClass;
+    use crate::Env;
+    use std::borrow::Cow;
+
+    pub trait Reference {
+        /// The fully qualified class name of the Java class represented by this
+        /// reference.
+        ///
+        /// The class name is expected to be dot-separated, in the same format as
+        /// `Class.getName()` and suitable for passing to `Class.forName()`
+        ///
+        /// For example: `"com.example.MyClass"`
+        ///
+        /// Note: this format is very similar to the FindClass naming conventions,
+        /// except for the use of dots instead of slashes.
+        ///
+        /// An array of objects would look like: "[Ljava.lang.Object;" An array of
+        /// integers would look like: "[I"
+        fn class_name() -> Cow<'static, str>;
+        fn as_raw(&self) -> jni::sys::jobject;
+        fn null() -> Self
+        where
+            Self: Sized,
+        {
+            unsafe { std::mem::zeroed() }
+        }
+    }
+
+    #[derive(Default)]
+    pub struct LoaderContext;
+    impl LoaderContext {
+        fn load_class_for_type<T>(
+            &self,
+            _initialize: bool,
+            _env: &mut Env,
+        ) -> Result<JClass, String> {
+            Ok(JClass)
+        }
+    }
 }
 
 mod objects {
@@ -1566,7 +1597,27 @@ mod objects {
         }
     }
 }
+
 pub use objects::{JClass, JObject, JObjectArray, JPrimitiveArray, JString};
+
+#[derive(Default)]
+struct JTest;
+
+impl AsRef<JTest> for JTest {
+    fn as_ref(&self) -> &JTest {
+        self
+    }
+}
+
+impl crate::refs::Reference for JTest {
+    fn class_name() -> Cow<'static, str> {
+        Cow::Borrowed("com.example.Test")
+    }
+
+    fn as_raw(&self) -> jni::sys::jobject {
+        std::ptr::null_mut()
+    }
+}
 
 macro_rules! jni_internal_of_emit {
     ( ( $($norm:tt)+ ) ) => { __java_type_to_internal_literal!( $($norm)+ ) };
