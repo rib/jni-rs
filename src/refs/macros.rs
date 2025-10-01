@@ -93,11 +93,11 @@ This does not require a runtime type check since any `"#, stringify!($Type), r#"
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __drt__expand_init {
-    ($Type:ident, $env:ident, $loader:ident, __drt__InitKindEnvClass, $Init:expr) => {{
+    ($Type:ident, $env:expr, $loader:expr, __drt__InitKindEnvClass, $Init:expr) => {{
         let class = $loader.load_class_for_type::<$Type>(true, $env)?;
         Self::call_init($env, &class, $Init)
     }};
-    ($Type:ident, $env:ident, $loader:ident, __drt__InitKindLoader, $Init:expr) => {
+    ($Type:ident, $env:expr, $loader:expr, __drt__InitKindLoader, $Init:expr) => {
         Self::call_init_with_loader($env, $loader, $Init)
     };
 }
@@ -385,6 +385,7 @@ macro_rules! __drt__emit_init_wrapper {
     };
 }
 
+// Determine which init variant is provided and tail-call with the decision
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __drt__dispatch_init {
@@ -467,85 +468,110 @@ macro_rules! __def_ref_parse {
         ]);
     };
 
-    // Error cases for missing required fields (should be caught in finalize, but keep strictness)
-    (@parse_tokens { type = (), class = ($Class:expr), pairs = [$($pairs:tt)*] }) => {
-        compile_error!("define_reference_type!: missing required `type` field");
-    };
-    (@parse_tokens { type = ($Type:ident), class = (), pairs = [$($pairs:tt)*] }) => {
-        compile_error!("define_reference_type!: missing required `class` field");
-    };
-    (@parse_tokens { type = (), class = (), pairs = [$($pairs:tt)*] }) => {
-        compile_error!("define_reference_type!: missing required `type` and `class` fields");
-    };
-
-    // Tokenization rules (top-level):
+    // Parse tokens: type = <ident>
     (@parse_tokens { type = (), class = $Class:tt, pairs = [$($acc:tt)*] } type = $value:ident $($rest:tt)*) => {
         $crate::__def_ref_parse! { @parse_tokens { type = ($value), class = $Class, pairs = [$($acc)*] } $($rest)* }
     };
+    // If type already set, updating it is an error to keep semantics simple
     (@parse_tokens { type = ($set:ident), class = $Class:tt, pairs = [$($acc:tt)*] } type = $value:ident $($rest:tt)*) => {
-        compile_error!("define_reference_type!: duplicate `type` key");
+        compile_error!("define_reference_type!: duplicate `type` key")
     };
 
+    // Parse tokens: class = <expr>, with comma
     (@parse_tokens { type = $Type:tt, class = (), pairs = [$($acc:tt)*] } class = $value:expr, $($rest:tt)*) => {
         $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = ($value), pairs = [$($acc)*] } $($rest)* }
     };
+    // Parse tokens: class = <expr>, no comma (end)
     (@parse_tokens { type = $Type:tt, class = (), pairs = [$($acc:tt)*] } class = $value:expr) => {
         $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = ($value), pairs = [$($acc)*] } }
     };
+    // If class already set, error on duplicate
     (@parse_tokens { type = $Type:tt, class = ($set:expr), pairs = [$($acc:tt)*] } class = $value:expr, $($rest:tt)*) => {
-        compile_error!("define_reference_type!: duplicate `class` key");
+        compile_error!("define_reference_type!: duplicate `class` key")
     };
     (@parse_tokens { type = $Type:tt, class = ($set:expr), pairs = [$($acc:tt)*] } class = $value:expr) => {
-        compile_error!("define_reference_type!: duplicate `class` key");
+        compile_error!("define_reference_type!: duplicate `class` key")
     };
 
+    // Parse tokens: raw = <ident>
     (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } raw = $value:ident $($rest:tt)*) => {
         $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (raw, $value)] } $($rest)* }
     };
+
+    // Parse tokens: api = <ident>
     (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } api = $value:ident $($rest:tt)*) => {
         $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (api, $value)] } $($rest)* }
     };
 
-    // wrap closures to avoid comma ambiguity during parsing
+    // Parse tokens: init = <expr>, with comma - wrap with __drt_Closure to avoid comma ambiguity
     (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } init = $value:expr, $($rest:tt)*) => {
         $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (init, (__drt_Closure(($value))))] } $($rest)* }
     };
+    // Parse tokens: init = <expr>, no comma (end)
     (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } init = $value:expr) => {
         $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (init, (__drt_Closure(($value))))] } }
     };
 
+    // Parse tokens: init_with_loader = <expr>, with comma
     (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } init_with_loader = $value:expr, $($rest:tt)*) => {
         $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (init_with_loader, (__drt_Closure(($value))))] } $($rest)* }
     };
+    // Parse tokens: init_with_loader = <expr>, no comma (end)
     (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } init_with_loader = $value:expr) => {
         $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (init_with_loader, (__drt_Closure(($value))))] } }
     };
 
-    // aliases
+    // Parse tokens: as = [aliases]
     (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } as = [$($value:tt)*] $($rest:tt)*) => {
         $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (aliases, [$($value)*])] } $($rest)* }
     };
 
-    // direct members keys
+    // Parse tokens: methods = {methods}
     (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } methods = {$($value:tt)*} $($rest:tt)*) => {
         $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (methods, {$($value)*})] } $($rest)* }
     };
+
+    // Parse tokens: methods {methods}
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } methods {$($value:tt)*} $($rest:tt)*) => {
+        $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (methods, {$($value)*})] } $($rest)* }
+    };
+
+    // Parse tokens: static_methods = {static_methods}
     (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } static_methods = {$($value:tt)*} $($rest:tt)*) => {
         $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (static_methods, {$($value)*})] } $($rest)* }
     };
+
+    // Parse tokens: static_methods {static_methods}
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } static_methods {$($value:tt)*} $($rest:tt)*) => {
+        $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (static_methods, {$($value)*})] } $($rest)* }
+    };
+
+    // Parse tokens: fields = {fields}
     (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } fields = {$($value:tt)*} $($rest:tt)*) => {
         $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (fields, {$($value)*})] } $($rest)* }
     };
+
+    // Parse tokens: fields {fields}
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } fields {$($value:tt)*} $($rest:tt)*) => {
+        $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (fields, {$($value)*})] } $($rest)* }
+    };
+
+    // Parse tokens: static_fields = {static_fields}
     (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } static_fields = {$($value:tt)*} $($rest:tt)*) => {
         $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (static_fields, {$($value)*})] } $($rest)* }
     };
 
-    // skip commas
+    // Parse tokens: static_fields {static_fields}
+    (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } static_fields {$($value:tt)*} $($rest:tt)*) => {
+        $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)* (static_fields, {$($value)*})] } $($rest)* }
+    };
+
+    // Parse tokens: Skip commas
     (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } , $($rest:tt)*) => {
         $crate::__def_ref_parse! { @parse_tokens { type = $Type, class = $Class, pairs = [$($acc)*] } $($rest)* }
     };
 
-    // unexpected
+    // Parse tokens: Error on unexpected tokens
     (@parse_tokens { type = $Type:tt, class = $Class:tt, pairs = [$($acc:tt)*] } $bad:tt $($rest:tt)*) => {
         compile_error!(concat!("Unexpected token in define_reference_type: ", stringify!($bad)));
     };
@@ -642,7 +668,14 @@ macro_rules! __def_ref_lookup_static_fields {
     ([$_h:tt $($rest:tt)*], $found:path, $not:path $(, $args:tt)*) => { $crate::__def_ref_lookup_static_fields!([$($rest)*], $found, $not $(, $args)*); };
 }
 
-// Finalize extraction and emit
+// Finalizer chain: extract required, then optional, then emit
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __def_ref_finalize {
+    ([$($pairs:tt)*]) => {
+        $crate::__def_ref_lookup_type!([$($pairs)*], $crate::__def_ref_found_type, $crate::__def_ref_missing_type, [$($pairs)*]);
+    };
+}
 
 #[doc(hidden)]
 #[macro_export]
@@ -765,14 +798,6 @@ macro_rules! __def_ref_found_static_fields {
             fields = {$($Fields)*},
             static_fields = {$($StaticFields)*},
         }
-    };
-}
-
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __def_ref_finalize {
-    ([$($pairs:tt)*]) => {
-        $crate::__def_ref_lookup_type!([$($pairs)*], $crate::__def_ref_found_type, $crate::__def_ref_missing_type, [$($pairs)*]);
     };
 }
 
