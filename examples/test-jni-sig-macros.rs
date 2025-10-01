@@ -1188,11 +1188,8 @@ macro_rules! __jgen_emit_lookup_method_fn {
         ( $($ret:tt)+ )
     ) => {
         paste! {
-            fn [<_ $rname _lookup>](env: &mut Env) -> Result<JMethodID> {
-                let class: &JClass = $this::lookup_class()?;
-
+            fn [<_ $rname _lookup>](env: &mut Env, class: &JClass) -> Result<JMethodID> {
                 let sig = __jsig_normalize_args_ret_then!( @expr __jsig_emit_sig_cow, ( $($args)* ), ( $($ret)+ ) );
-
                 env.get_method_id(class, stringify!($jname), &sig)
             }
         }
@@ -1209,18 +1206,18 @@ macro_rules! __jgen_emit_call_method_fn__with_norm_args_ret {
         ( $rk:ident ( $($rt:tt)* ) $( as rust ( $($ret_as:tt)+ ) )? )
     ) => {
         paste! {
-            fn [<_ $rname _call>](
+            pub fn $rname (
+                &self,
                 env: $envType,
-                this: &$this,
-                method_id: JMethodID,
                 $( $an: __jgen_emit_rust_method_arg_type!( $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ) ),*
             ) -> Result< __jgen_emit_rust_return_type!( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? ) > {
+                let api = [<$this API>]::get(env, &$crate::refs::LoaderContext::None)?;
                 let jni_args = __jsig_args_to_jvalue_array!( ( $( $an : $ak( $($at)* ) $( as rust ( $($aas)+ ) )? ),* ) );
 
                 __jgen_emit_jni_sys_call!{
                     env,
-                    this,
-                    method_id,
+                    self,
+                    api.[<$rname _method_id>],
                     &jni_args,
                     ( $rk( $($rt)* ) $( as rust ( $($ret_as)+ ) )? )
                 }
@@ -1312,19 +1309,25 @@ macro_rules! jgen_bind_method {
         sig: ( $($args:tt)* ) -> $($rty:tt)+
     ) => {
 
-        __jgen_emit_lookup_method_fn!(
-            $this,
-            $jname,
-            $rname,
-            ( $($args)* ),
-            ( $($rty)+ )
-        );
-        __jgen_emit_call_method_fn!(
-            $this,
-            $rname,
-            ( $($args)* ),
-            ( $($rty)+ )
-        );
+        paste::paste!{
+            impl [<$this API>] {
+                __jgen_emit_lookup_method_fn!(
+                    $this,
+                    $jname,
+                    $rname,
+                    ( $($args)* ),
+                    ( $($rty)+ )
+                );
+            }
+            impl $this {
+                __jgen_emit_call_method_fn!(
+                    $this,
+                    $rname,
+                    ( $($args)* ),
+                    ( $($rty)+ )
+                );
+            }
+        }
     };
 }
 
@@ -1443,6 +1446,14 @@ impl Env {
     fn exception_check(&self) -> bool {
         false
     }
+
+    fn with_local_frame<F, R>(&self, _capacity: i32, f: F) -> Result<R>
+    where
+        F: FnOnce(&mut Env) -> Result<R>,
+    {
+        let mut env = Env;
+        f(&mut env)
+    }
 }
 
 static GLOBAL_JCLASS: JClass = JClass;
@@ -1482,9 +1493,12 @@ mod refs {
     }
 
     #[derive(Default)]
-    pub struct LoaderContext;
+    pub enum LoaderContext {
+        #[default]
+        None,
+    }
     impl LoaderContext {
-        fn load_class_for_type<T>(
+        pub fn load_class_for_type<T>(
             &self,
             _initialize: bool,
             _env: &mut Env,
@@ -1646,6 +1660,47 @@ const _: &str = jni_internal_of!([char]); // "[C"
 const _: &str = jni_internal_of!(java.lang.String); // "Ljava/lang/String;"
 const _: &str = jni_internal_of!([[java.lang.String]]); // "[Ljava/lang/String;"
 
+pub struct JTestAPI {
+    class: Global<JClass>,
+    rust_function_0_method_id: JMethodID,
+    rust_function_1_method_id: JMethodID,
+    rust_function_2_method_id: JMethodID,
+    rust_function_3_method_id: JMethodID,
+    rust_function_4_method_id: JMethodID,
+    rust_function_5_method_id: JMethodID,
+    rust_function_6_method_id: JMethodID,
+    rust_function_7_method_id: JMethodID,
+    rust_function_8_method_id: JMethodID,
+    rust_function_10_method_id: JMethodID,
+}
+unsafe impl Send for JTestAPI {}
+unsafe impl Sync for JTestAPI {}
+impl JTestAPI {
+    pub fn get(env: &Env, loader_context: &crate::refs::LoaderContext) -> Result<&'static Self> {
+        static API: once_cell::sync::OnceCell<JTestAPI> = once_cell::sync::OnceCell::new();
+        API.get_or_try_init(|| {
+            env.with_local_frame(4, |env| {
+                let class = loader_context
+                    .load_class_for_type::<JTest>(false, env)
+                    .unwrap();
+                Ok(JTestAPI {
+                    class: env.new_global_ref(class.as_ref())?,
+                    rust_function_0_method_id: JTestAPI::_rust_function_0_lookup(env, &class)?,
+                    rust_function_1_method_id: JTestAPI::_rust_function_1_lookup(env, &class)?,
+                    rust_function_2_method_id: JTestAPI::_rust_function_2_lookup(env, &class)?,
+                    rust_function_3_method_id: JTestAPI::_rust_function_3_lookup(env, &class)?,
+                    rust_function_4_method_id: JTestAPI::_rust_function_4_lookup(env, &class)?,
+                    rust_function_5_method_id: JTestAPI::_rust_function_5_lookup(env, &class)?,
+                    rust_function_6_method_id: JTestAPI::_rust_function_6_lookup(env, &class)?,
+                    rust_function_7_method_id: JTestAPI::_rust_function_7_lookup(env, &class)?,
+                    rust_function_8_method_id: JTestAPI::_rust_function_8_lookup(env, &class)?,
+                    rust_function_10_method_id: JTestAPI::_rust_function_10_lookup(env, &class)?,
+                })
+            })
+        })
+    }
+}
+
 jgen_bind_method!(
     this: JTest,
     javaFunction as rust_function_0,
@@ -1785,25 +1840,14 @@ fn main() {
     println!("[[jint]] -> {}", jni_internal_of!([[jint]]));
     println!("[[[jchar]]] -> {}", jni_internal_of!([[[jchar]]]));
 
-    let test = JTest;
-    let mut env = Env;
-
     // Don't call these, just make sure they compile
     let _ = || {
-        // Test a primitive return function (should use &Env)
-        let method_0 = _rust_function_0_lookup(&mut env).unwrap();
-        _rust_function_0_call(
-            &env, &test, method_0, &JObject, // java.lang.String normalized as JObject
-            42,
-        )
-        .unwrap();
+        let mut env = Env;
+        let test = JTest;
 
-        // Test an object return function (should use &mut Env)
-        let method_6 = _rust_function_6_lookup(&mut env).unwrap();
-        let _obj_ret = _rust_function_6_call(
-            &mut env, // Note: &mut Env for object return
-            &test, method_6, &JString, &JString, 42,
-        )
-        .unwrap();
+        test.rust_function_0(&env, &JObject, 42).unwrap();
+        let _a: JObjectArray<JObject> = test
+            .rust_function_6(&mut env, &JString, &JString, 42)
+            .unwrap();
     };
 }
