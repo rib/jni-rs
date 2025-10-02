@@ -1347,6 +1347,11 @@ macro_rules! jgen_bind_method {
 /// Emits a cacheable method IDs API struct, lookup APIs and call APIs for a given set of methods
 ///
 /// # Usage
+/// ```
+/// fn example_native_impl<'local>(env: &mut Env<'local>, this: JTest<'local>, arg0: jint, arg1: impl AsRef<JString>) -> Result<jboolean> {
+///    // ...
+///    Ok(true)
+/// }
 ///
 /// jgen_bind_api!{
 ///     JTestAPI,
@@ -1356,60 +1361,79 @@ macro_rules! jgen_bind_method {
 ///         },
 ///         set_message = {
 ///             name = "setMessage",
-///             sig = (java.lang.String as JString) -> void,
+///             sig = (msg: java.lang.String as JString) -> void,
 ///         }
 ///     },
 ///     static_methods = {
 ///         example_static = {
 ///             name = "exampleStatic",
-///             sig = (jint, java.lang.String as JString) -> jboolean,
+///             sig = (val: jint, name: java.lang.String as JString) -> jboolean,
 ///         }
 ///     },
 ///     native_methods = {
 ///         example_native = {
 ///             name = "exampleNative",
-///             sig = (jint, java.lang.String as JString) -> jboolean,
+///             sig = (val: jint, name: java.lang.String as JString) -> jboolean,
 ///             fn = example_native_impl,
 ///         }
 ///     }
 /// }
+/// ```
 ///
 /// # Outputs
 ///
+/// ```
 /// pub struct JTestAPI {
 ///     class: Global<JClass>,
-///     get_message: JMethodID,
-///     set_message: JMethodID,
-///     example_static: JStaticMethodID,
+///     get_message_method_id: JMethodID,
+///     set_message_method_id: JMethodID,
+///     example_static_method_id: JStaticMethodID,
 /// }
 /// impl JTestAPI {
-///    pub fn get(env: &mut Env) -> Result<&'static Self> {
-///         let static API: OnceCell<JTestAPI> = OnceCell::new();
+///     pub fn get(env: &Env, loader_context: &LoaderContext) -> Result<&'static Self> {
+///         static API: once_cell::sync::OnceCell<JTestAPI> = once_cell::sync::OnceCell::new();
 ///         API.get_or_try_init(|| {
-///            let class = env.find_class("com/example/Test")?.into_global(env);
-///            let native_methods: &[JNativeMethod] = &[
-///               JNativeMethod {
-///                   name: "exampleNative",
-///                   sig: "(ILjava/lang/String;)Z",
-///                   fn: example_native_impl,
-///               }
-///            ];
-///            env.register_native_methods(&class, native_methods)?;
-///            Ok(JTestAPI {
-///                class: env.new_global_ref(class.as_ref())?,
-///                get_message: env.get_method_id(&class, "getMessage", "()Ljava/lang/String;")?,
-///                set_message: env.get_method_id(&class, "setMessage", "(Ljava/lang/String;)V")?,
-///                 example_static: env.get_static_method_id(&class, "exampleStatic", "(ILjava/lang/String;)Z")?,
+///            let mut env = env.with_local_frame(8, |env| {
+///                let class = env.find_class("com/example/Test")?.into_global(env);
+///                let native_methods: &[JNativeMethod] = &[
+///                    JNativeMethod {
+///                        name: "exampleNative",
+///                        sig: "(ILjava/lang/String;)Z",
+///                        fn: Self::example_native__shim,
+///                    }
+///                ];
+///                env.register_native_methods(&class, native_methods)?;
+///                Ok(JTestAPI {
+///                    class: env.new_global_ref(class.as_ref())?,
+///                    get_message_method_id: env.get_method_id(&class, "getMessage", "()Ljava/lang/String;")?,
+///                    set_message_method_id: env.get_method_id(&class, "setMessage", "(Ljava/lang/String;)V")?,
+///                    example_static_method_id: env.get_static_method_id(&class, "exampleStatic", "(ILjava/lang/String;)Z")?,
+///                })
 ///            })
 ///         })
-///    }
+///     }
+///     fn example_native__shim<'local>(env: UnownedEnv, this: JTest<'local>, arg0: jint, arg1: jni::sys::jobject) -> jboolean {
+///     }
 /// }
 ///
 /// impl JTest {
 ///     pub fn get_message(&self, env: &mut Env) -> Result<JString> {
-///          let api = JTestAPI::get(env)?;
-///          _get_message_call(env, self, api.get_message)
+///          let api = JTestAPI::get(env, &LoaderContext::None)?;
+///          let jni_args = [ ];
+///          __jgen_emit_jni_sys_call!(env, api.get_message_method_id, jni_args)
+///     }
+///     pub fn set_message(&self, env: &Env, msg: impl AsRef<JString>) -> Result<()> {
+///          let api = JTestAPI::get(env, &LoaderContext::None)?;
+///          let jni_args = [msg.as_ref().as_raw()];
+///          __jgen_emit_jni_sys_call!(env, api.set_message_method_id, jni_args)
+///     }
+///     pub fn example_static(env: &mut Env, val: jint, msg: impl AsRef<JString>) -> Result<jboolean> {
+///          let api = JTestAPI::get(env, &LoaderContext::None)?;
+///          let jni_args = [val, msg.as_ref().as_raw()];
+///          __jgen_emit_jni_sys_call!(env, api.example_static_method_id, jni_args)
+///     }
 /// }
+/// ```
 macro_rules! jgen_bind_methods {
     () => {
         todo!()
