@@ -4085,8 +4085,9 @@ See the jni-rs Env documentation for more details.
     /// All the native method pointers must be valid, non-null pointers to
     /// functions that match the signature of the corresponding Java method.
     ///
-    /// All of the pointers must remain valid for the lifetime of the class unless
-    /// they are unregistered, via [`Self::unregister_native_methods`].
+    /// All of the function pointers must remain valid for the lifetime of the
+    /// class unless they are unregistered, via
+    /// [`Self::unregister_native_methods`].
     pub unsafe fn register_native_methods<'other_local, T>(
         &mut self,
         class: T,
@@ -4489,11 +4490,11 @@ impl<'local> EnvUnowned<'local> {
 
 #[derive(Debug)]
 /// Native method descriptor.
-pub struct NativeMethod {
+pub struct NativeMethod<'desc> {
     /// Name of method.
-    pub name: JNIString,
+    pub name: &'desc JNIStr,
     /// Method signature.
-    pub sig: JNIString,
+    pub sig: &'desc JNIStr,
     /// Pointer to native function with signature
     /// `fn(env: Env, class: JClass, ...arguments according to sig) -> RetType`
     /// for static methods or
