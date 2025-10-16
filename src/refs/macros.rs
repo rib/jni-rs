@@ -282,7 +282,7 @@ Returns [Error::WrongObjectType] if the `IsInstanceOf` check fails.
                 #[inline]
                 fn lookup_class<'caller>(
                     env: &$crate::Env<'_>,
-                    loader_context: $crate::refs::LoaderContext,
+                    loader_context: &$crate::refs::LoaderContext,
                 ) -> $crate::errors::Result<
                     impl ::std::ops::Deref<
                         Target = $crate::refs::Global<$crate::objects::JClass<'static>>

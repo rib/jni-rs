@@ -140,7 +140,7 @@ pub unsafe trait Reference: Sized {
     ///
     fn lookup_class<'caller>(
         env: &Env<'_>,
-        loader_context: LoaderContext,
+        loader_context: &LoaderContext,
     ) -> crate::errors::Result<impl Deref<Target = Global<JClass<'static>>> + 'caller>;
 
     /// Returns a new reference type based on [`Self::Kind`] for the given `reference` that is tied
@@ -422,7 +422,7 @@ where
 
     fn lookup_class<'caller>(
         env: &Env<'_>,
-        loader_context: LoaderContext,
+        loader_context: &LoaderContext,
     ) -> crate::errors::Result<impl Deref<Target = Global<JClass<'static>>> + 'caller> {
         T::lookup_class(env, loader_context)
     }
