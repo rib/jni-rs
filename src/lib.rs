@@ -345,3 +345,5 @@ pub use self::vm::*;
 // Re-export for use in public macros
 #[doc(hidden)]
 pub use pastey::paste as __pastey;
+
+pub use jni_macros::jni_mangle as __jni_mangle;
