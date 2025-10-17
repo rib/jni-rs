@@ -14,24 +14,104 @@ use quote::ToTokens;
 use syn::parse_quote;
 use syn::spanned::Spanned;
 
-/// Annotate a function with this procedural macro attribute to expose it over the JNI.
+/// Mangles a Rust function name into a JNI-compatible, native method name.
 ///
-/// This attribute takes a single string literal as an argument, specifying the package namespace
-/// this function should be placed under.
+/// This attribute takes one to three string literal arguments:
+/// 1. Package namespace (required)
+/// 2. Method name (optional)
+/// 3. JNI signature (optional)
 ///
-/// ```
+/// If two arguments are given, the second is inferred to be a method name if it doesn't contain
+/// '(', otherwise it's treated as a signature.
+///
+/// The name is mangled according to the JNI Specification, under "Design" -> "Resolving Native Method Names"
+///
+/// https://docs.oracle.com/en/java/javase/11/docs/specs/jni/design.html#resolving-native-method-names
+///
+/// # Method Name Generation
+///
+/// If no method name is provided, the Rust function name is converted from `snake_case` to `lowerCamelCase`.
+///
+/// If the Rust function name is not entirely lowercase with underscores (i.e. it contains any uppercase letters),
+/// the name is used directly without transformation.
+///
+/// ## ABI Handling
+///
+/// The macro requires the ABI to be `extern "system"` (required for JNI).
+/// - If no ABI is specified, it will automatically be set to `extern "system"`
+/// - If `extern "system"` is already specified, it will be preserved
+/// - If any other ABI (e.g., `extern "C"`) is specified, a compile error will be generated
+///
+/// # Examples
+///
+/// Basic usage with just namespace (function name converted to lowerCamelCase):
+/// ```ignore
 /// use jni::{ JNIEnv, objects::{ JClass, JString }, sys::jstring };
-/// use jni_fn::jni_fn;
+/// use jni_macros::jni_mangle;
 ///
-/// #[jni_fn("com.example.RustBindings")]
-/// pub fn sayHello(mut env: JNIEnv, _: JClass, name: JString) -> jstring {
-///     let name_javastr = env.get_string(&name).unwrap();
-///     let name = name_javastr.to_str().unwrap();
-///
-///     env.new_string(format!("Hello, {}!", name))
-///         .expect("Couldn't create java string!")
-///         .into_raw()
+/// // Rust function in snake_case
+/// #[jni_mangle("com.example.RustBindings")]
+/// pub fn say_hello(mut env: JNIEnv, _: JClass, name: JString) -> jstring {
+///     // ...
+/// #     unimplemented!()
 /// }
+/// // Generates: Java_com_example_RustBindings_sayHello
+///
+/// // Or already in lowerCamelCase (idempotent)
+/// #[jni_mangle("com.example.RustBindings")]
+/// pub fn sayHello(mut env: JNIEnv, _: JClass, name: JString) -> jstring {
+///     // ...
+/// #     unimplemented!()
+/// }
+/// // Generates: Java_com_example_RustBindings_sayHello
+/// ```
+///
+/// With custom method name:
+/// ```ignore
+/// # use jni::{ JNIEnv, objects::JClass };
+/// # use jni_macros::jni_mangle;
+/// #[jni_mangle("com.example.RustBindings", "customMethodName")]
+/// pub fn some_rust_function(env: JNIEnv, _: JClass) { }
+/// // Generates: Java_com_example_RustBindings_customMethodName
+/// ```
+///
+/// With signature only (overloaded method):
+/// ```ignore
+/// # use jni::{ JNIEnv, objects::JClass };
+/// # use jni_macros::jni_mangle;
+/// #[jni_mangle("com.example.RustBindings", "(I)Z")]
+/// pub fn boolean_method(env: JNIEnv, _: JClass) { }
+/// // Generates: Java_com_example_RustBindings_booleanMethod__I
+/// // Note: Only argument types are encoded (I), return type (Z) is ignored
+/// ```
+///
+/// With signature and no arguments (overloaded method):
+/// ```ignore
+/// # use jni::{ JNIEnv, objects::JClass };
+/// # use jni_macros::jni_mangle;
+/// #[jni_mangle("com.example.RustBindings", "()V")]
+/// pub fn no_args_method(env: JNIEnv, _: JClass) { }
+/// // Generates: Java_com_example_RustBindings_noArgsMethod__
+/// // Note: __ suffix indicates overloaded method even with no arguments
+/// ```
+///
+/// With method name and signature:
+/// ```ignore
+/// # use jni::{ JNIEnv, objects::JClass };
+/// # use jni_macros::jni_mangle;
+/// #[jni_mangle("com.example.RustBindings", "customName", "(Ljava/lang/String;)V")]
+/// pub fn another_function(env: JNIEnv, _: JClass) { }
+/// // Generates: Java_com_example_RustBindings_customName__Ljava_lang_String_2
+/// // Note: Only argument types are encoded, return type (V) is ignored
+/// ```
+///
+/// Pre-existing ABI is automatically overridden:
+/// ```ignore
+/// # use jni::{ JNIEnv, objects::JClass };
+/// # use jni_macros::jni_mangle;
+/// #[jni_mangle("com.example.RustBindings")]
+/// pub extern "C" fn my_function(env: JNIEnv, _: JClass) { }
+/// // The "C" ABI is overridden with "system"
 /// ```
 ///
 /// The `sayHello` function will automatically be expanded to have the correct ABI specification
@@ -75,43 +155,108 @@ fn jni_mangle2(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
-    let namespace = match syn::parse2::<syn::LitStr>(attr) {
-        Ok(n) => n,
-        Err(_e) => return syn::Error::new(attr_span, "The `jni_fn` attribute must have a single string literal supplied to specify the namespace").to_compile_error(),
-    }.value();
+    // Parse the attribute arguments
+    let args: syn::punctuated::Punctuated<syn::LitStr, syn::Token![,]> =
+        match syn::parse::Parser::parse2(syn::punctuated::Punctuated::parse_terminated, attr) {
+            Ok(args) => args,
+            Err(_e) => {
+                return syn::Error::new(
+                    attr_span,
+                    "The `jni_mangle` attribute must have string literal arguments",
+                )
+                .to_compile_error();
+            }
+        };
+
+    if args.is_empty() || args.len() > 3 {
+        return syn::Error::new(
+            attr_span,
+            "The `jni_mangle` attribute must have 1-3 string literal arguments",
+        )
+        .to_compile_error();
+    }
+
+    let namespace = args[0].value();
 
     if !valid_namespace(&namespace) {
         return syn::Error::new(
             attr_span,
-            "Invalid package namespace supplied to `jni_fn` attribute",
+            "Invalid package namespace supplied to `jni_mangle` attribute",
         )
         .to_compile_error();
     }
 
     let orig_fn_name = function.sig.ident.to_string();
 
-    function.sig.ident = syn::Ident::new(
-        &create_jni_fn_name(&namespace, &orig_fn_name),
-        function.sig.ident.span(),
-    );
+    // Parse optional method name and signature
+    let (method_name, signature) = match args.len() {
+        1 => {
+            // Just namespace - derive lowerCamelCase from Rust function name
+            (snake_case_to_lower_camel_case(&orig_fn_name), None)
+        }
+        2 => {
+            // Namespace + either method name or signature
+            let second_arg = args[1].value();
+            if second_arg.contains('(') {
+                // It's a signature - derive method name from Rust function name
+                (
+                    snake_case_to_lower_camel_case(&orig_fn_name),
+                    Some(second_arg),
+                )
+            } else {
+                // It's a method name
+                (second_arg, None)
+            }
+        }
+        3 => {
+            // Namespace + method name + signature
+            (args[1].value(), Some(args[2].value()))
+        }
+        _ => unreachable!(),
+    };
 
+    let jni_name = create_jni_fn_name(&namespace, &method_name, signature.as_deref());
+
+    // Change identifier to JNI name (always valid since we encode all special chars)
+    function.sig.ident = syn::Ident::new(&jni_name, function.sig.ident.span());
     function.attrs.extend([
         parse_quote!(#[unsafe(no_mangle)]),
         parse_quote!(#[allow(non_snake_case)]),
     ]);
 
-    if function.sig.abi.is_some() {
-        return syn::Error::new(function.sig.abi.span(), "Don't specify an ABI for `jni_mangle` attributed functions - the correct ABI will be added automatically").to_compile_error();
+    // Check ABI - must be "system" or unspecified
+    if let Some(ref abi) = function.sig.abi {
+        if let Some(ref name) = abi.name {
+            if name.value() != "system" {
+                return syn::Error::new(
+                    name.span(),
+                    format!(
+                        "`jni_mangle` attributed functions must use `extern \"system\"` ABI, found `extern \"{}\"`",
+                        name.value()
+                    ),
+                )
+                .to_compile_error();
+            }
+            // ABI is already "system", keep it as is
+        } else {
+            // extern with no explicit ABI string - set to "system"
+            function.sig.abi = Some(syn::Abi {
+                extern_token: abi.extern_token,
+                name: Some(syn::LitStr::new("system", function.sig.ident.span())),
+            });
+        }
+    } else {
+        // No ABI specified - set to "system"
+        function.sig.abi = Some(syn::Abi {
+            extern_token: Default::default(),
+            name: Some(syn::LitStr::new("system", function.sig.ident.span())),
+        });
     }
-    function.sig.abi = Some(syn::Abi {
-        extern_token: Default::default(),
-        name: Some(syn::LitStr::new("system", function.sig.ident.span())),
-    });
 
     if !matches!(function.vis, syn::Visibility::Public(_)) {
         return syn::Error::new(
             function.vis.span(),
-            "`jni_fn` attributed functions must have public visibility (`pub`)",
+            "`jni_mangle` attributed functions must have public visibility (`pub`)",
         )
         .to_compile_error();
     }
@@ -143,6 +288,16 @@ fn valid_namespace(namespace: &str) -> bool {
         }
     }
 
+    // Check for leading or trailing dots
+    if namespace.starts_with('.') || namespace.ends_with('.') {
+        return false;
+    }
+
+    // Check for consecutive dots (which would create empty identifiers)
+    if namespace.contains("..") {
+        return false;
+    }
+
     fn is_valid_ident(ident: &str) -> bool {
         /// These shouldn't occur as the first character of an identifier.
         const FORBIDDEN_START_CHARS: &[char] = &['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
@@ -169,20 +324,144 @@ fn valid_namespace(namespace: &str) -> bool {
     true
 }
 
-/// Creates a JNI-compatible function name from the given namespace and function name.
+/// Converts a snake_case identifier to lowerCamelCase.
+/// This transformation is idempotent - if the input is already in lowerCamelCase, it returns unchanged.
+/// If the input contains any uppercase letters, it's returned unchanged to preserve intentional casing.
+/// Leading and trailing underscores are preserved.
+///
+/// Examples:
+/// - "say_hello" -> "sayHello"
+/// - "get_user_name" -> "getUserName"
+/// - "_private_method" -> "_privateMethod"
+/// - "__dunder__" -> "__dunder__"
+/// - "trailing_" -> "trailing_"
+/// - "sayHello" -> "sayHello" (unchanged)
+/// - "getUserName" -> "getUserName" (unchanged)
+/// - "Foo_Bar" -> "Foo_Bar" (unchanged - contains uppercase)
+/// - "XMLParser" -> "XMLParser" (unchanged - contains uppercase)
+/// - "init" -> "init" (unchanged - no underscores)
+/// - "café_résumé" -> "caféRésumé" (Unicode-aware)
+fn snake_case_to_lower_camel_case(s: &str) -> String {
+    // If the string contains any uppercase letters, assume it's intentionally cased
+    // and return it unchanged
+    if s.chars().any(|c| c.is_uppercase()) {
+        return s.to_string();
+    }
+
+    // Find leading underscores
+    let leading_underscores = s.chars().take_while(|&c| c == '_').count();
+
+    // Find trailing underscores
+    let trailing_underscores = s.chars().rev().take_while(|&c| c == '_').count();
+
+    // If the entire string is underscores, return as-is
+    if leading_underscores + trailing_underscores >= s.len() {
+        return s.to_string();
+    }
+
+    // Extract the middle part (without leading/trailing underscores)
+    let middle = &s[leading_underscores..s.len() - trailing_underscores];
+
+    // Convert the middle part
+    let mut result = String::new();
+    let mut capitalize_next = false;
+
+    for c in middle.chars() {
+        if c == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            // Use Unicode-aware uppercase conversion
+            for upper_c in c.to_uppercase() {
+                result.push(upper_c);
+            }
+            capitalize_next = false;
+        } else {
+            result.push(c);
+        }
+    }
+
+    // Reconstruct with leading and trailing underscores
+    let mut final_result = String::with_capacity(s.len());
+    for _ in 0..leading_underscores {
+        final_result.push('_');
+    }
+    final_result.push_str(&result);
+    for _ in 0..trailing_underscores {
+        final_result.push('_');
+    }
+
+    final_result
+}
+
+/// Creates a JNI-compatible function name from the given namespace, function name, and optional signature.
 /// This does _not_ transform the provided function name into `snakeCase` if it's not already; but
 /// `#[allow(non_snake_case)]` should be added to prevent errors.
 ///
 /// Any underscores in the original namespace or function name need to be replaced by "_1", and
-/// then dot separators need to be turned into underscores. Scala may use dollar signs in class
-/// names; those also need to be converted to `_00024`.
-fn create_jni_fn_name(namespace: &str, fn_name: &str) -> String {
-    let namespace_underscored = namespace
-        .replace('_', "_1")
-        .replace('.', "_")
-        .replace('$', "_00024");
-    let fn_name_underscored = fn_name.replace('_', "_1");
-    format!("Java_{}_{}", namespace_underscored, fn_name_underscored)
+/// then dot separators need to be turned into underscores.
+///
+/// For signatures (if provided), only the argument types (between parentheses) are encoded:
+/// - '_' -> "_1"
+/// - ';' -> "_2"
+/// - '[' -> "_3"
+/// - '/' -> "_"
+/// - Non-ASCII characters (including '$') -> "_0xxxx" where xxxx is the lowercase hex Unicode codepoint
+///
+/// The return type is ignored, and parentheses are not included in the mangled name.
+fn create_jni_fn_name(namespace: &str, fn_name: &str, signature: Option<&str>) -> String {
+    fn mangle_identifier(s: &str) -> String {
+        let mut result = String::new();
+        for c in s.chars() {
+            match c {
+                '_' => result.push_str("_1"),
+                '.' => result.push('_'),
+                // Handle ASCII alphanumeric and safe characters
+                _ if c.is_ascii_alphanumeric() => result.push(c),
+                // Everything else (including '$' and non-ASCII) gets encoded
+                _ => result.push_str(&format!("_0{:04x}", c as u32)),
+            }
+        }
+        result
+    }
+
+    fn mangle_signature_args(s: &str) -> String {
+        let mut result = String::new();
+        for c in s.chars() {
+            match c {
+                '_' => result.push_str("_1"),
+                ';' => result.push_str("_2"),
+                '[' => result.push_str("_3"),
+                '/' => result.push('_'),
+                _ if c.is_ascii_alphanumeric() => result.push(c),
+                _ => {
+                    // Non-ASCII character or other special chars - encode as _0xxxx
+                    result.push_str(&format!("_0{:04x}", c as u32));
+                }
+            }
+        }
+        result
+    }
+
+    let namespace_underscored = mangle_identifier(namespace);
+    let fn_name_underscored = mangle_identifier(fn_name);
+
+    let mut result = format!("Java_{}_{}", namespace_underscored, fn_name_underscored);
+
+    if let Some(sig) = signature {
+        // Extract only the argument types (between parentheses), ignoring return type
+        if let Some(start) = sig.find('(') {
+            if let Some(end) = sig.find(')') {
+                let args = &sig[start + 1..end];
+                // Always add __ when signature is provided (indicates overloaded method)
+                result.push_str("__");
+                if !args.is_empty() {
+                    result.push_str(&mangle_signature_args(args));
+                }
+            }
+        }
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -191,42 +470,86 @@ mod tests {
 
     #[test]
     fn test_create_jni_fn_name() {
+        // Basic namespace and function name tests
         assert_eq!(
-            create_jni_fn_name("com.example.Foo", "init"),
+            create_jni_fn_name("com.example.Foo", "init", None),
             "Java_com_example_Foo_init"
         );
         assert_eq!(
-            create_jni_fn_name("com.example.Bar", "closeIt"),
+            create_jni_fn_name("com.example.Bar", "closeIt", None),
             "Java_com_example_Bar_closeIt"
         );
         assert_eq!(
-            create_jni_fn_name("com.example.Bar", "close_it"),
+            create_jni_fn_name("com.example.Bar", "close_it", None),
             "Java_com_example_Bar_close_1it"
         );
         assert_eq!(
             create_jni_fn_name(
                 "org.signal.client.internal.Native",
-                "IdentityKeyPair_Deserialize"
+                "IdentityKeyPair_Deserialize",
+                None
             ),
             "Java_org_signal_client_internal_Native_IdentityKeyPair_1Deserialize"
         );
         assert_eq!(
-            create_jni_fn_name("a.b.c.Test$", "show"),
+            create_jni_fn_name("a.b.c.Test$", "show", None),
             "Java_a_b_c_Test_00024_show"
+        );
+
+        // Tests with signatures - only argument types are encoded, no parens or return type
+        assert_eq!(
+            create_jni_fn_name("com.example.Foo", "method", Some("(I)Z")),
+            "Java_com_example_Foo_method__I"
+        );
+        assert_eq!(
+            create_jni_fn_name("com.example.Bar", "test", Some("(Ljava/lang/String;)V")),
+            "Java_com_example_Bar_test__Ljava_lang_String_2"
+        );
+        assert_eq!(
+            create_jni_fn_name("a.b.Test", "arrayMethod", Some("([I)[Ljava/lang/Object;")),
+            "Java_a_b_Test_arrayMethod___3I"
+        );
+        assert_eq!(
+            create_jni_fn_name(
+                "com.example.Test",
+                "complex_method",
+                Some("([[Ljava/lang/String;I)[[I")
+            ),
+            "Java_com_example_Test_complex_1method___3_3Ljava_lang_String_2I"
+        );
+        // Test with no arguments (empty parentheses) - should still have __ suffix
+        assert_eq!(
+            create_jni_fn_name("com.example.Foo", "noArgs", Some("()V")),
+            "Java_com_example_Foo_noArgs__"
         );
     }
 
     #[test]
     fn test_valid_namespace() {
+        // Valid namespaces
         assert!(valid_namespace("com.example.Foo"));
         assert!(valid_namespace("com.antonok.kb"));
         assert!(valid_namespace("org.signal.client.internal.Native"));
         assert!(valid_namespace("net.under_score"));
         assert!(valid_namespace("a.b.c.Test$"));
+
+        // Invalid namespaces - spaces and special characters
         assert!(!valid_namespace("com example Foo"));
         assert!(!valid_namespace(" com.example.Foo"));
         assert!(!valid_namespace("com.example.Foo "));
         assert!(!valid_namespace("com.example.1Foo"));
+
+        // Invalid namespaces - leading dots
+        assert!(!valid_namespace(".com.example.Foo"));
+        assert!(!valid_namespace("."));
+
+        // Invalid namespaces - trailing dots
+        assert!(!valid_namespace("com.example.Foo."));
+
+        // Invalid namespaces - consecutive dots
+        assert!(!valid_namespace("com..example.Foo"));
+        assert!(!valid_namespace("com...example.Foo"));
+        assert!(!valid_namespace("com.example..Foo"));
     }
 
     #[test]
@@ -240,16 +563,17 @@ mod tests {
             }
         };
 
-        let expanded = jni_fn2(attr, source);
+        let expanded = jni_mangle2(attr, source);
 
+        // Note: close_it becomes closeIt (lowerCamelCase)
         assert_eq!(
             format!("{}", expanded),
             format!(
                 "{}",
                 quote::quote! {
-                    #[no_mangle]
+                    #[unsafe(no_mangle)]
                     #[allow(non_snake_case)]
-                    pub extern "system" fn Java_com_example_Bar_close_1it (env: JNIEnv, _: JClass, filename: JString) -> jboolean {
+                    pub extern "system" fn Java_com_example_Bar_closeIt (env: JNIEnv, _: JClass, filename: JString) -> jboolean {
                         unimplemented!()
                     }
                 }
@@ -268,16 +592,17 @@ mod tests {
             }
         };
 
-        let expanded = jni_fn2(attr, source);
+        let expanded = jni_mangle2(attr, source);
 
+        // Note: close_it becomes closeIt (lowerCamelCase)
         assert_eq!(
             format!("{}", expanded),
             format!(
                 "{}",
                 quote::quote! {
-                    #[no_mangle]
+                    #[unsafe(no_mangle)]
                     #[allow(non_snake_case)]
-                    pub unsafe extern "system" fn Java_com_example_Bar_close_1it (env: JNIEnv, _: JClass, filename: JString) -> jboolean {
+                    pub unsafe extern "system" fn Java_com_example_Bar_closeIt (env: JNIEnv, _: JClass, filename: JString) -> jboolean {
                         unimplemented!()
                     }
                 }
@@ -295,14 +620,14 @@ mod tests {
             }
         };
 
-        let expanded = jni_fn2(attr, source);
+        let expanded = jni_mangle2(attr, source);
 
         assert_eq!(
             format!("{}", expanded),
             format!(
                 "{}",
                 quote::quote! {
-                    ::core::compile_error! { "The `jni_fn` attribute can only be applied to `fn` items" }
+                    ::core::compile_error! { "The `jni_mangle` attribute can only be applied to `fn` items" }
                 }
             )
         );
@@ -317,14 +642,14 @@ mod tests {
             }
         };
 
-        let expanded = jni_fn2(attr, source);
+        let expanded = jni_mangle2(attr, source);
 
         assert_eq!(
             format!("{}", expanded),
             format!(
                 "{}",
                 quote::quote! {
-                    ::core::compile_error! { "The `jni_fn` attribute must have a single string literal supplied to specify the namespace" }
+                    ::core::compile_error! { "The `jni_mangle` attribute must have 1-3 string literal arguments" }
                 }
             )
         );
@@ -339,36 +664,59 @@ mod tests {
             }
         };
 
-        let expanded = jni_fn2(attr, source);
+        let expanded = jni_mangle2(attr, source);
 
         assert_eq!(
             format!("{}", expanded),
             format!(
                 "{}",
                 quote::quote! {
-                    ::core::compile_error! { "Invalid package namespace supplied to `jni_fn` attribute" }
+                    ::core::compile_error! { "Invalid package namespace supplied to `jni_mangle` attribute" }
                 }
             )
         );
     }
 
     #[test]
-    fn test_specified_abi() {
+    fn test_wrong_abi_generates_error() {
         let attr = quote::quote! { "com.example.Foo" };
         let source = quote::quote! {
-            pub extern "C" fn close_it(env: JNIEnv, _: JClass, filename: JString) -> jboolean {
+            pub extern "C" fn closeIt(env: JNIEnv, _: JClass, filename: JString) -> jboolean {
                 unimplemented!()
             }
         };
 
-        let expanded = jni_fn2(attr, source);
+        let expanded = jni_mangle2(attr, source);
 
+        // Should generate an error for non-system ABI
+        let expanded_str = format!("{}", expanded);
+        assert!(expanded_str.contains("compile_error"));
+        assert!(expanded_str.contains("must use `extern \\\"system\\\"` ABI"));
+        assert!(expanded_str.contains("found `extern \\\"C\\\"`"));
+    }
+
+    #[test]
+    fn test_system_abi_is_preserved() {
+        let attr = quote::quote! { "com.example.Foo" };
+        let source = quote::quote! {
+            pub extern "system" fn closeIt(env: JNIEnv, _: JClass, filename: JString) -> jboolean {
+                unimplemented!()
+            }
+        };
+
+        let expanded = jni_mangle2(attr, source);
+
+        // The "system" ABI should be preserved
         assert_eq!(
             format!("{}", expanded),
             format!(
                 "{}",
                 quote::quote! {
-                    ::core::compile_error! { "Don't specify an ABI for `jni_fn` attributed functions - the correct ABI will be added automatically" }
+                    #[unsafe(no_mangle)]
+                    #[allow(non_snake_case)]
+                    pub extern "system" fn Java_com_example_Foo_closeIt (env: JNIEnv, _: JClass, filename: JString) -> jboolean {
+                        unimplemented!()
+                    }
                 }
             )
         );
@@ -383,14 +731,270 @@ mod tests {
             }
         };
 
-        let expanded = jni_fn2(attr, source);
+        let expanded = jni_mangle2(attr, source);
 
         assert_eq!(
             format!("{}", expanded),
             format!(
                 "{}",
                 quote::quote! {
-                    ::core::compile_error! { "`jni_fn` attributed functions must have public visibility (`pub`)" }
+                    ::core::compile_error! { "`jni_mangle` attributed functions must have public visibility (`pub`)" }
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn test_with_method_name() {
+        let attr = quote::quote! {
+            "com.example.Bar", "customMethod"
+        };
+        let source = quote::quote! {
+            pub fn rust_function(env: JNIEnv, _: JClass) -> jboolean {
+                unimplemented!()
+            }
+        };
+
+        let expanded = jni_mangle2(attr, source);
+
+        assert_eq!(
+            format!("{}", expanded),
+            format!(
+                "{}",
+                quote::quote! {
+                    #[unsafe(no_mangle)]
+                    #[allow(non_snake_case)]
+                    pub extern "system" fn Java_com_example_Bar_customMethod (env: JNIEnv, _: JClass) -> jboolean {
+                        unimplemented!()
+                    }
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn test_with_signature_only() {
+        let attr = quote::quote! {
+            "com.example.Bar", "(I)Z"
+        };
+        let source = quote::quote! {
+            pub fn boolMethod(env: JNIEnv, _: JClass) -> jboolean {
+                unimplemented!()
+            }
+        };
+
+        let expanded = jni_mangle2(attr, source);
+
+        assert_eq!(
+            format!("{}", expanded),
+            format!(
+                "{}",
+                quote::quote! {
+                    #[unsafe(no_mangle)]
+                    #[allow(non_snake_case)]
+                    pub extern "system" fn Java_com_example_Bar_boolMethod__I (env: JNIEnv, _: JClass) -> jboolean {
+                        unimplemented!()
+                    }
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn test_with_method_name_and_signature() {
+        let attr = quote::quote! {
+            "com.example.Bar", "testMethod", "(Ljava/lang/String;)V"
+        };
+        let source = quote::quote! {
+            pub fn rust_func(env: JNIEnv, _: JClass) {
+                unimplemented!()
+            }
+        };
+
+        let expanded = jni_mangle2(attr, source);
+
+        assert_eq!(
+            format!("{}", expanded),
+            format!(
+                "{}",
+                quote::quote! {
+                    #[unsafe(no_mangle)]
+                    #[allow(non_snake_case)]
+                    pub extern "system" fn Java_com_example_Bar_testMethod__Ljava_lang_String_2 (env: JNIEnv, _: JClass) {
+                        unimplemented!()
+                    }
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn test_snake_case_to_lower_camel_case() {
+        // Basic conversions
+        assert_eq!(snake_case_to_lower_camel_case("say_hello"), "sayHello");
+        assert_eq!(
+            snake_case_to_lower_camel_case("get_user_name"),
+            "getUserName"
+        );
+        assert_eq!(snake_case_to_lower_camel_case("init"), "init");
+        assert_eq!(snake_case_to_lower_camel_case("close_it"), "closeIt");
+
+        // Idempotent - already lowerCamelCase
+        assert_eq!(snake_case_to_lower_camel_case("sayHello"), "sayHello");
+        assert_eq!(snake_case_to_lower_camel_case("getUserName"), "getUserName");
+        assert_eq!(snake_case_to_lower_camel_case("closeIt"), "closeIt");
+
+        // Mixed case - preserved unchanged
+        assert_eq!(snake_case_to_lower_camel_case("Foo_Bar"), "Foo_Bar");
+        assert_eq!(snake_case_to_lower_camel_case("XMLParser"), "XMLParser");
+        assert_eq!(snake_case_to_lower_camel_case("IOError"), "IOError");
+        assert_eq!(snake_case_to_lower_camel_case("HTML_Parser"), "HTML_Parser");
+
+        // Unicode support
+        assert_eq!(snake_case_to_lower_camel_case("café_résumé"), "caféRésumé");
+        assert_eq!(snake_case_to_lower_camel_case("ß_test"), "ßTest");
+        assert_eq!(snake_case_to_lower_camel_case("test_αλφα"), "testΑλφα");
+        assert_eq!(
+            snake_case_to_lower_camel_case("method_привет"),
+            "methodПривет"
+        );
+
+        // Leading/trailing underscores preserved
+        assert_eq!(
+            snake_case_to_lower_camel_case("_private_method"),
+            "_privateMethod"
+        );
+        assert_eq!(snake_case_to_lower_camel_case("__dunder__"), "__dunder__");
+        assert_eq!(snake_case_to_lower_camel_case("_leading"), "_leading");
+        assert_eq!(snake_case_to_lower_camel_case("trailing_"), "trailing_");
+        assert_eq!(
+            snake_case_to_lower_camel_case("__leading_multiple"),
+            "__leadingMultiple"
+        );
+        assert_eq!(
+            snake_case_to_lower_camel_case("trailing_multiple__"),
+            "trailingMultiple__"
+        );
+        assert_eq!(snake_case_to_lower_camel_case("___"), "___");
+        assert_eq!(snake_case_to_lower_camel_case("_a_"), "_a_");
+        assert_eq!(snake_case_to_lower_camel_case("_foo_bar_"), "_fooBar_");
+
+        // Edge cases
+        assert_eq!(snake_case_to_lower_camel_case("a_b_c"), "aBC");
+    }
+
+    #[test]
+    fn test_snake_case_function_name_conversion() {
+        // Test that snake_case function names are automatically converted to lowerCamelCase
+        let attr = quote::quote! {
+            "com.example.Bar"
+        };
+        let source = quote::quote! {
+            pub fn say_hello_world(env: JNIEnv, _: JClass) {
+                unimplemented!()
+            }
+        };
+
+        let expanded = jni_mangle2(attr, source);
+
+        assert_eq!(
+            format!("{}", expanded),
+            format!(
+                "{}",
+                quote::quote! {
+                    #[unsafe(no_mangle)]
+                    #[allow(non_snake_case)]
+                    pub extern "system" fn Java_com_example_Bar_sayHelloWorld (env: JNIEnv, _: JClass) {
+                        unimplemented!()
+                    }
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn test_camel_case_function_name_unchanged() {
+        // Test that lowerCamelCase function names remain unchanged (idempotent)
+        let attr = quote::quote! {
+            "com.example.Bar"
+        };
+        let source = quote::quote! {
+            pub fn sayHelloWorld(env: JNIEnv, _: JClass) {
+                unimplemented!()
+            }
+        };
+
+        let expanded = jni_mangle2(attr, source);
+
+        assert_eq!(
+            format!("{}", expanded),
+            format!(
+                "{}",
+                quote::quote! {
+                    #[unsafe(no_mangle)]
+                    #[allow(non_snake_case)]
+                    pub extern "system" fn Java_com_example_Bar_sayHelloWorld (env: JNIEnv, _: JClass) {
+                        unimplemented!()
+                    }
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn test_snake_case_with_signature() {
+        // Test that snake_case function names are converted even when signature is present
+        let attr = quote::quote! {
+            "com.example.Bar", "(I)Z"
+        };
+        let source = quote::quote! {
+            pub fn check_valid(env: JNIEnv, _: JClass) -> jboolean {
+                unimplemented!()
+            }
+        };
+
+        let expanded = jni_mangle2(attr, source);
+
+        assert_eq!(
+            format!("{}", expanded),
+            format!(
+                "{}",
+                quote::quote! {
+                    #[unsafe(no_mangle)]
+                    #[allow(non_snake_case)]
+                    pub extern "system" fn Java_com_example_Bar_checkValid__I (env: JNIEnv, _: JClass) -> jboolean {
+                        unimplemented!()
+                    }
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn test_signature_with_no_args() {
+        // Test that signatures with no arguments still add __ suffix (for overloaded methods)
+        let attr = quote::quote! {
+            "com.example.Bar", "()V"
+        };
+        let source = quote::quote! {
+            pub fn noArgs(env: JNIEnv, _: JClass) {
+                unimplemented!()
+            }
+        };
+
+        let expanded = jni_mangle2(attr, source);
+
+        // Should have __ even with no arguments (indicates overloaded method)
+        assert_eq!(
+            format!("{}", expanded),
+            format!(
+                "{}",
+                quote::quote! {
+                    #[unsafe(no_mangle)]
+                    #[allow(non_snake_case)]
+                    pub extern "system" fn Java_com_example_Bar_noArgs__ (env: JNIEnv, _: JClass) {
+                        unimplemented!()
+                    }
                 }
             )
         );
