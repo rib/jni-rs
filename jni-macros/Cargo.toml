@@ -6,6 +6,9 @@ edition = "2024"
 [lib]
 proc-macro = true
 
+[build-dependencies]
+rustc_version = "0.4"
+
 [dependencies]
 syn = { version = "2.0", features = ["full"] }
 quote = "1.0"

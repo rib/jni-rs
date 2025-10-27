@@ -95,10 +95,17 @@ pub fn jni_mangle2(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Change identifier to JNI name (always valid since we encode all special chars)
     function.sig.ident = syn::Ident::new(&jni_name, function.sig.ident.span());
-    function.attrs.extend([
-        parse_quote!(#[unsafe(no_mangle)]),
-        parse_quote!(#[allow(non_snake_case)]),
-    ]);
+    if cfg!(has_unsafe_attr) {
+        // Add attributes for Rust 1.82+
+        function.attrs.extend([parse_quote!(#[unsafe(no_mangle)])]);
+    } else {
+        // Add attributes for older Rust versions
+        function.attrs.extend([parse_quote!(#[no_mangle])]);
+    }
+
+    function
+        .attrs
+        .extend([parse_quote!(#[allow(non_snake_case)])]);
 
     // Check ABI - must be "system" or unspecified
     if let Some(ref abi) = function.sig.abi {
