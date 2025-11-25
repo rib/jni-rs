@@ -2,7 +2,7 @@ use std::{
     convert::TryInto,
     marker::PhantomData,
     os::raw::{c_char, c_void},
-    panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
+    panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
     ptr,
     str::FromStr,
     sync::{Mutex, MutexGuard},
@@ -11,6 +11,7 @@ use std::{
 use jni_sys::jobject;
 
 use crate::{
+    DEFAULT_LOCAL_FRAME_CAPACITY, JNIVersion, JavaVM,
     descriptors::Desc,
     errors::*,
     objects::{
@@ -21,22 +22,21 @@ use crate::{
     signature::{JavaType, Primitive, TypeSignature},
     strings::{JNIStr, MUTF8Chars},
     sys::{
-        self, jboolean, jbyte, jchar, jdouble, jfloat, jint, jlong, jshort, jsize, jvalue,
-        JNINativeMethod,
+        self, JNINativeMethod, jboolean, jbyte, jchar, jdouble, jfloat, jint, jlong, jshort, jsize,
+        jvalue,
     },
-    JNIVersion, JavaVM, DEFAULT_LOCAL_FRAME_CAPACITY,
 };
 use crate::{
     errors::ErrorPolicy,
     objects::{
-        type_array_sealed::TypeArraySealed, Cast, JBooleanArray, JByteArray, JCharArray,
-        JDoubleArray, JFloatArray, JIntArray, JLongArray, JObjectArray, JPrimitiveArray,
-        JShortArray, LoaderContext,
+        Cast, JBooleanArray, JByteArray, JCharArray, JDoubleArray, JFloatArray, JIntArray,
+        JLongArray, JObjectArray, JPrimitiveArray, JShortArray, LoaderContext,
+        type_array_sealed::TypeArraySealed,
     },
 };
 use crate::{objects::AsJArrayRaw, signature::ReturnType};
 
-use super::{objects::Reference, AttachGuard};
+use super::{AttachGuard, objects::Reference};
 
 #[cfg(doc)]
 use crate::{objects::JThread, strings::JNIString};
@@ -1303,12 +1303,12 @@ See the jni-rs Env documentation for more details.
         &self,
         obj: Global<
             impl Into<JObject<'static>>
-                + AsRef<JObject<'static>>
-                + Default
-                + Reference
-                + Send
-                + Sync
-                + 'static,
+            + AsRef<JObject<'static>>
+            + Default
+            + Reference
+            + Send
+            + Sync
+            + 'static,
         >,
     ) -> Result<Global<To::GlobalKind>>
     where
@@ -2805,7 +2805,7 @@ See the jni-rs Env documentation for more details.
         &mut self,
         obj: impl Reference + Into<JObject<'any_local>> + AsRef<JObject<'any_local>>,
     ) -> Result<JList<'any_local>> {
-        JList::cast_local(obj, self)
+        JList::cast_local(self, obj)
     }
 
     /// Cast a [JObject] to a [JMap].
@@ -2819,7 +2819,7 @@ See the jni-rs Env documentation for more details.
         &mut self,
         obj: impl Reference + Into<JObject<'any_local>> + AsRef<JObject<'any_local>>,
     ) -> Result<JMap<'any_local>> {
-        JMap::cast_local(obj, self)
+        JMap::cast_local(self, obj)
     }
 
     /// Gets the contents of a Java string, in [modified UTF-8] encoding.
@@ -2879,7 +2879,8 @@ See the jni-rs Env documentation for more details.
     /// This requires a re-encoding of rusts UTF-8 strings to JNI's modified UTF-8 format before
     /// calling the JNI function `NewStringUTF`.
     ///
-    /// To avoid this intermediate copy + encoding, consider using [`JString::from_jni_str`].
+    /// To avoid this intermediate copy + encoding, consider using [`JString::from_jni_str`], and
+    /// using the [`crate::jni_str`] macro to encode string literals at compile time.
     pub fn new_string(&mut self, from: impl AsRef<str>) -> Result<JString<'local>> {
         JString::new(self, from)
     }
