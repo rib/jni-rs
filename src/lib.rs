@@ -339,4 +339,20 @@ pub mod vm;
 )]
 pub use self::vm::*;
 
+// workaround proc-macro-crate limitations so we can use jni-macros from the jni crate itself
+// ref: https://github.com/bkchr/proc-macro-crate/issues/11
+extern crate self as jni;
+
+pub use jni_macros::jni_cstr;
+pub use jni_macros::jni_str;
+
 pub use jni_macros::jni_mangle;
+
+pub use jni_macros::jni_sig;
+pub use jni_macros::jni_sig_cstr;
+pub use jni_macros::jni_sig_jstr;
+pub use jni_macros::jni_sig_str;
+
+pub use jni_macros::bind_java_type;
+
+pub use jni_macros::native_method;
