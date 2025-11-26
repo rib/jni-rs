@@ -969,6 +969,73 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///     JThrowable,             // From traits only, no as_ method
 /// }
 /// ```
+/// ## `fields`
+///
+/// Defines field bindings with getter and setter methods. Fields can be
+/// instance or static, and use either shorthand or block syntax.
+///
+/// Field names follow the same [automatic name
+/// conversion](#automatic-name-conversion-snake_case-to-lowercamelcase) as
+/// methods when no explicit Java field name is provided.
+///
+/// ### Shorthand Syntax
+///
+/// ```custom
+/// [visibility] [static] name: type
+/// ```
+/// - `visibility`: Optional visibility modifier (`pub`, `priv`, `pub(crate)`,
+///   etc.) (by default, getters and setters are `pub`)
+/// - `static`: Marks field as static
+///
+/// Generates getter and setter methods as `name()` and `set_name()`.
+///
+/// ### Block Syntax
+///
+/// ```ignore
+/// [visibility] [static] name {
+///     [name = "javaFieldName",]
+///     sig = type,
+///     [get = getter_name,]
+///     [set = setter_name,]
+/// }
+/// ```
+///
+/// The leading qualifiers (`[visibility]`, `[static]`) are the same as for
+/// shorthand syntax.
+///
+/// Custom getter/setter names and documentation can be specified:
+///
+/// ```ignore
+/// fields = {
+///     // Shorthand: generates value() and set_value()
+///     value: jint,
+///
+///     // Static field
+///     static default_value: jint,
+///
+///     // Block syntax with custom Java name
+///     internal_state {
+///         name = "internalState",
+///         sig = jboolean,
+///     },
+///
+///     // Custom getter/setter names with separate documentation
+///     special_field {
+///         sig = jint,
+///         /// Gets the special field value
+///         get = get_special_value,
+///         /// Sets the special field value
+///         set = set_special_value,
+///     },
+///
+///     // Different visibility for getter and setter
+///     pub user_name {
+///         sig = java.lang.String,
+///         get = user_name,          // public getter
+///         priv set = set_user_name, // private setter
+///     },
+/// }
+/// ```
 ///
 /// ## All Method Blocks: `constructors`, `methods`, `native_methods`
 ///
@@ -1301,7 +1368,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// }
 /// ```
 ///
-/// #### Native Method Exporting
+/// # Native Method Exporting
 ///
 /// By default, all native methods are exported with JNI mangled names so that
 /// the JVM can discover them. This can be disabled globally by setting the
@@ -1310,8 +1377,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///
 /// Exporting is independent of `raw` and `fn` - you can export any native method.
 ///
-/// When exporting is enabled (via `extern`, `export = true`, or the default
-/// `export_native_methods = true`), the macro generates an additional wrapper
+/// When a native method is exported, the macro generates an additional wrapper
 /// function with the proper JNI mangled name and `extern "system"` ABI:
 ///
 /// ```ignore
@@ -1363,7 +1429,59 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// }
 /// ```
 ///
-/// #### Complete Working Example
+/// # Native Method Registration
+///
+/// The JVM can discover native method implementations in two ways:
+///
+/// 1. **Exporting with mangled names**: The native method is exported as a symbol
+///    with a JNI-mangled name (e.g., `Java_com_example_MyType_myMethod__I`).
+///    The JVM automatically resolves these symbols within a shared library.
+///
+/// 2. **Registration via `Env::register_native_methods`**: The native method
+///    implementations are explicitly registered at runtime by calling
+///    `Env::register_native_methods()` with the Java class and a mapping of
+///    method signatures to function pointers.
+///
+/// The `bind_java_type!` macro supports both approaches:
+///
+/// **Automatic Registration**: The generated `{Type}API::get()` method
+/// automatically calls `Env::register_native_methods()` to register all declared
+/// native methods with the JVM. This happens when you first obtain the API
+/// reference for the type.
+///
+/// ```
+/// # jni::bind_java_type! { ExampleType => com.example.ExampleType }
+/// # fn _register(env: &mut jni::Env) -> jni::errors::Result<()> {
+/// let api = ExampleTypeAPI::get(env, &jni::refs::LoaderContext::default())?;
+/// # Ok(()) }
+/// // At this point, all native methods have been registered
+/// ```
+///
+/// **Note:** Native method registration happens very early, after loading the
+/// class. If the class has not already been initialized through other means,
+/// this means that native methods may be registered before any Java static
+/// initializers or static blocks have run.
+///
+/// **Benefits of Exporting** (via `extern`/`export`):
+/// - Native methods may be resolved by the JVM immediately upon loading the
+///   shared library, before you have an opportunity to call
+///   `Env::register_native_methods()`.
+/// - Useful when Java code needs to call native methods during early
+///   initialization or static blocks.
+///
+/// **Benefits of Registration** (via `Env::register_native_methods`):
+/// - Native methods can be implemented even when your native code does not exist
+///   within a shared library.
+/// - Essential when using `Env::define_class()` to load Java classes from binary
+///   data - you can still register native methods without having a shared library
+///   to export symbols from.
+/// - Provides more control over when and how native methods are bound.
+///
+/// You can use both approaches simultaneously (the default behavior exports all
+/// methods AND registers them via `{Type}API::get()`), or disable exports with
+/// `export_native_methods = false` to rely solely on registration.
+///
+/// # Native Methods Working Example
 ///
 /// ```
 /// # use jni::bind_java_type;
@@ -1458,69 +1576,10 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// }
 /// ```
 ///
-/// ## Field Block: `fields`
+/// # Extra Properties
 ///
-/// Defines field bindings with getter and setter methods. Fields can be
-/// instance or static, and use either shorthand or block syntax.
-///
-/// Field names follow the same [automatic name
-/// conversion](#automatic-name-conversion-snake_case-to-lowercamelcase) as
-/// methods when no explicit Java field name is provided.
-///
-/// ### Shorthand Syntax
-///
-/// ```custom
-/// [visibility] [static] name: type
-/// ```
-///
-/// Generates getter and setter methods as `name()` and `set_name()`.
-///
-/// ### Block Syntax
-///
-/// ```ignore
-/// [visibility] [static] name {
-///     [name = "javaFieldName",]
-///     sig = type,
-///     [get = getter_name,]
-///     [set = setter_name,]
-/// }
-/// ```
-///
-/// Custom getter/setter names and documentation can be specified:
-///
-/// ```ignore
-/// fields = {
-///     // Shorthand: generates value() and set_value()
-///     value: jint,
-///
-///     // Static field
-///     static default_value: jint,
-///
-///     // Block syntax with custom Java name
-///     internal_state {
-///         name = "internalState",
-///         sig = jboolean,
-///     },
-///
-///     // Custom getter/setter names with separate documentation
-///     special_field {
-///         sig = jint,
-///         /// Gets the special field value
-///         get = get_special_value,
-///         /// Sets the special field value
-///         set = set_special_value,
-///     },
-///
-///     // Different visibility for getter and setter
-///     pub user_name {
-///         sig = java.lang.String,
-///         get = user_name,          // public getter
-///         priv set = set_user_name, // private setter
-///     },
-/// }
-/// ```
-///
-/// ## Special Properties
+/// The following properties shouldn't be needed for most use cases, but are
+/// available for special-case scenarios.
 ///
 /// ### `jni`
 ///
@@ -1585,6 +1644,66 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// The `priv_type` is stored as a `private` field in the API struct and must
 /// implement `Send + Sync`. The `init_priv` hook is called during API
 /// initialization.
+///
+/// ## Wrapper Macros
+///
+/// You can easily create custom wrapper macros around `bind_java_type!` to
+/// encapsulate common configuration across multiple bindings in your crate. This
+/// is particularly useful for:
+///
+/// - Setting a custom `jni` crate path (e.g., if you've renamed the dependency)
+/// - Defining a common `type_map` with types used throughout your bindings
+/// - Setting default values for properties like `export_native_methods`
+///
+/// The wrapper macro doesn't need to understand the `bind_java_type!` syntax - it
+/// simply injects additional properties before forwarding to the actual macro.
+///
+/// ### Example Wrapper Macro
+///
+/// ```
+/// # use jni::bind_java_type;
+/// # bind_java_type! { UserId => com.example.types.UserId }
+/// # bind_java_type! { Timestamp => com.example.types.Timestamp }
+/// # extern crate jni as my_jni_crate;
+///
+/// // Define a wrapper that sets jni path and common type_map
+/// macro_rules! my_bind_java_type {
+///     ($($tt:tt)*) => {
+///         ::my_jni_crate::bind_java_type!(
+///             jni = ::my_jni_crate,
+///             type_map = {
+///                 // Common types used across all bindings
+///                 UserId => com.example.types.UserId,
+///                 Timestamp => com.example.types.Timestamp,
+///             },
+///             $($tt)*
+///         )
+///     };
+/// }
+///
+/// // Use the wrapper - notice we don't repeat jni= or common types
+///
+/// my_bind_java_type! { CustomType => com.example.CustomClass }
+///
+/// my_bind_java_type! {
+///     rust_type = MyClass,
+///     java_type = "com.example.MyClass",
+///     methods = {
+///         // UserId and Timestamp are available without redefinition
+///         fn get_user(id: UserId) -> Timestamp,
+///     },
+///     // Can still add binding-specific type_map entries
+///     type_map = {
+///         CustomType => com.example.CustomType,
+///     },
+/// }
+/// ```
+///
+/// The wrapper pattern works because:
+/// - Properties (except `jni =`) can appear in any order
+/// - Multiple `type_map` blocks are merged together
+/// - You can still override or extend the injected configuration
+///
 #[proc_macro]
 pub fn bind_java_type(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     bind_java_type::bind_java_type_impl(input.into())

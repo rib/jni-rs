@@ -1865,12 +1865,12 @@ fn generate_reference_impl(
 
             #[inline]
             unsafe fn kind_from_raw<'env>(local_ref: #jni::sys::jobject) -> Self::Kind<'env> {
-                #type_name(#jni::objects::JObject::kind_from_raw(local_ref))
+                unsafe { #type_name(#jni::objects::JObject::kind_from_raw(local_ref)) }
             }
 
             #[inline]
             unsafe fn global_kind_from_raw(global_ref: #jni::sys::jobject) -> Self::GlobalKind {
-                #type_name(#jni::objects::JObject::global_kind_from_raw(global_ref))
+                unsafe { #type_name(#jni::objects::JObject::global_kind_from_raw(global_ref)) }
             }
         }
     }
@@ -1915,7 +1915,7 @@ fn generate_base_methods(
                 env: &#jni::Env<'env_inner>,
                 raw: #sys_type_path,
             ) -> #type_name<'env_inner> {
-                #type_name(#jni::objects::JObject::from_raw(env, raw as #jni::sys::jobject))
+                unsafe { #type_name(#jni::objects::JObject::from_raw(env, raw as #jni::sys::jobject)) }
             }
 
             #[doc = concat!(
