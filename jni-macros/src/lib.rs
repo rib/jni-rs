@@ -770,19 +770,20 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// casts and type mappings are valid at runtime.
 ///
 /// [Reference]: https://docs.rs/jni/latest/jni/refs/trait.Reference.html
-/// # Syntax
+///
+/// # Basic Example
 ///
 /// ```
 /// # use jni::Env;
 /// # use jni::objects::{JClass, JString};
-/// # use jni::sys::{jint, jboolean};
-/// # use jni::jni_str;
+/// # use jni::sys::jint;
 /// # use jni::refs::LoaderContext;
 /// use jni::bind_java_type;
 ///
-/// // Shorthand syntax can be used for trivial bindings
+/// // Minimal shorthand syntax for trivial bindings
 /// bind_java_type! { CustomType => com.example.CustomClass }
 ///
+/// // Full example with all common properties
 /// bind_java_type! {
 ///     rust_type = MyType,
 ///     java_type = "com.example.MyClass",
@@ -793,103 +794,468 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///        collection: JCollection,
 ///     },
 ///     constructors = {
-///         /// Constructor with no arguments.
 ///         fn new(),
-///         /// Constructor with a jint argument.
 ///         fn new_with_value(value: jint),
 ///     },
 ///     methods = {
-///         /// Instance method returning a JString.
-///         fn my_method(arg: jint, arg1: JString) -> CustomType,
+///         fn my_method(arg: jint) -> CustomType,
 ///         priv fn _my_private_method() -> jint,
-///         static fn my_static_method(arg: jint, arg1: JString) -> CustomType,
-///         fn my_long_form_method = {
-///             name = "myLongformMethod",
-///             sig = (arg: jlong, arg1: JString) -> CustomType
-///         }
+///         static fn my_static_method() -> jint,
 ///     },
 ///     fields = {
-///         /// Instance field of type jint.
 ///         my_field: jint,
 ///         static my_static_field: jint,
 ///     },
 ///     native_methods = {
-///         fn my_native(val: bool) -> JString,
-///         static fn my_static_native(val: bool) -> JString,
-///         static fn my_raw_native = {
-///             sig = (val: jboolean) -> JString,
-///             fn = my_raw_native_impl
-///         }
+///         fn my_native(val: jint) -> JString,
 ///     }
 /// }
 ///
-/// // Generates:
-/// // - struct MyTypeAPI { ... }
-/// //      - MyTypeAPI::get(&Env, &LoaderContext) -> Result<&'static MyTypeAPI>
-/// //          - Caches class reference, method IDs, field IDs
-/// //          - Asserts type mappings and is_instance_of relationships are valid
-/// //          - Registers native methods
-/// // - struct MyType { ... }
-/// // - impl Reference for MyType<'local> { ... }
-/// // - impl MyTypeAPI { ... }
-/// // - impl From<MyType<'local>> for JObject<'local> { ... }
-/// // - impl From<MyType<'local>> for JCollection<'local> { ... }
-/// // - trait MyTypeNativeInterface { ... }
-///
-/// /// Safely implementable `<Type>NativeInterface` trait for native methods.
+/// // Implement the native methods trait
 /// impl MyTypeNativeInterface for MyTypeAPI {
 ///    type Error = jni::errors::Error;
-///    fn my_native<'local>(env: &mut Env<'local>, this: MyType<'local>, val: bool) -> jni::errors::Result<JString<'local>> {
-///        JString::new(env, if val { "TRUE" } else { "FALSE" })
-///    }
-///    fn my_static_native<'local>(env: &mut Env<'local>, class: JClass<'local>, val: bool) -> jni::errors::Result<JString<'local>> {
-///        JString::new(env, if val { "TRUE" } else { "FALSE" })
-///    }
-/// }
-///
-/// impl MyTypeAPI {
-///    /// Example wrapper of private method binding.
-///    pub fn my_wrapper_method(&self, env: &Env<'_>, obj: MyType<'_>) -> jni::errors::Result<jint> {
-///        let api = MyTypeAPI::get(env, &LoaderContext::default())?;
-///        obj._my_private_method(env)
+///    fn my_native<'local>(
+///        env: &mut Env<'local>,
+///        this: MyType<'local>,
+///        val: jint
+///    ) -> Result<JString<'local>, Self::Error> {
+///        JString::from_str(env, &format!("Value: {}", val))
 ///    }
 /// }
 ///
+/// // Use the generated bindings
 /// fn use_my_type<'local>(env: &mut Env<'local>) -> jni::errors::Result<()> {
 ///     let my_obj = MyType::new_with_value(env, 42)?;
-///
-///     let msg = JString::new(env, "Hello")?;
-///     my_obj.my_method(env, 42, msg)?;
-///
+///     let result = my_obj.my_method(env, 100)?;
 ///     let field_value = my_obj.my_field(env)?;
-///     my_obj.set_my_field(env, 100)?;
-///
-///     let my_collection = my_obj.as_collection();
-///     my_collection.clear(env)?;
+///     my_obj.set_my_field(env, 200)?;
 ///     Ok(())
 /// }
 /// ```
 ///
-/// # Common Properties
+/// # Generated Code
 ///
-/// - `rust_type`: The Rust type name for the generated Reference wrapper (required)
-/// - `java_type`: The fully-qualified Java class name (required)
-/// - `type_map`: Type mappings from Rust type names to Java classes (used in signatures)
-/// - `is_instance_of`: List of other Reference types this type can be cast to
-/// - `constructors`: Constructor definitions
-/// - `methods`: Method definitions
-/// - `fields`: Field definitions
-/// - `native_methods`: Native method definitions
+/// The macro generates:
+/// - `struct MyType<'local>` - Reference wrapper type
+/// - `struct MyTypeAPI` - Singleton API struct with cached class and method/field IDs
+/// - `impl Reference for MyType<'local>` - Reference trait implementation
+/// - `trait MyTypeNativeInterface` - Safe trait for implementing native methods
+/// - `impl From<MyType<'local>> for JObject<'local>` - Conversion to JObject
+/// - `impl From<MyType<'local>> for <IsInstanceOf>` - Conversions for declared parent types
 ///
-/// # Special-case Properties
-/// - `jni`: Optional custom path to the jni crate (default: auto-detected, must be first)
-/// - `api`: Optional custom name for the generated API struct (default: `{Type}API`)
-/// - `priv_type`: Optional name of a custom type to insert into API struct as `private: {priv_type}` member (must also implement `priv_init` hook)
-/// - `hooks`: Optional hooks for overriding generated code (e.g. `load_class`, `priv_init`)
-/// - `native_trait`: Name for the generated native methods trait
-/// - `export_native_methods`: Override whether to generate mangled native method exports (default: true)
+/// The `MyTypeAPI::get(&Env, &LoaderContext)` method:
+/// - Lazily loads and caches the Java class reference
+/// - Caches all method IDs and field IDs
+/// - Validates type mappings and `is_instance_of` relationships at runtime
+/// - Registers native methods with the JVM
 ///
-/// TODO
+/// # Properties Reference
+///
+/// ## `rust_type` (required)
+///
+/// The Rust type name for the generated Reference wrapper.
+///
+/// ```ignore
+/// rust_type = MyType
+/// ```
+///
+/// ## `java_type` (required)
+///
+/// The fully-qualified Java class name. Can be specified as:
+/// - Dot-separated identifiers: `java.lang.String` or `com.example.MyClass`
+/// - String literal: `"java.lang.String"` or `"com.example.MyClass"`
+///
+/// For inner classes:
+/// - Use `::` in dot-separated form: `com.example.Outer::Inner`
+/// - Use `$` in string form: `"com.example.Outer$Inner"`
+///
+/// ```ignore
+/// java_type = com.example.MyClass
+/// // or
+/// java_type = "com.example.Outer$Inner"
+/// ```
+///
+/// ## `type_map`
+///
+/// Maps Rust type names to Java class names for use in method/field signatures.
+/// This allows using custom Rust types in signatures throughout the binding.
+///
+/// Supports three types of mappings:
+///
+/// ### Reference Type Mappings
+///
+/// Maps Rust reference types to Java classes:
+///
+/// ```ignore
+/// type_map = {
+///     CustomType => com.example.CustomClass,
+///     AnotherType => "com.example.AnotherClass",
+///     InnerType => com.example.Outer::Inner,
+///     my_crate::MyType => com.example.MyType,
+/// }
+/// ```
+///
+/// ### Unsafe Primitive Type Mappings
+///
+/// Maps Rust types to Java primitive types using the `unsafe` keyword. This is
+/// particularly useful for Rust types that transparently wrap a pointer (e.g., handles)
+/// that need to be passed to Java as a `long`:
+///
+/// ```ignore
+/// type_map = {
+///     unsafe MyHandle => long,
+///     unsafe MyBoxedPointer => long,
+///     unsafe MyRawFd => int,
+/// }
+/// ```
+///
+/// These mappings are marked `unsafe` because the macro cannot verify type safety
+/// between the Rust type and Java primitive type.
+///
+/// ### Type Aliases
+///
+/// Creates aliases for existing type mappings using the `typealias` keyword. This
+/// can improve readability in signatures before defining full type bindings:
+///
+/// ```ignore
+/// type_map = {
+///     MyType => com.example.MyType,
+///     typealias MyAlias => MyType,
+///     typealias MyObjectAlias => JObject,
+/// }
+/// ```
+///
+/// Note: Aliases for array types are not supported.
+///
+/// ## `is_instance_of`
+///
+/// Declares that this type can be safely cast to other Reference types. The macro
+/// generates `From` implementations and runtime validation to ensure the relationships
+/// are valid.
+///
+/// Supports two syntaxes:
+/// - With explicit stem name: `stem: Type` (generates `as_stem()` method)
+/// - Without stem: `Type` (generates `as_type()` method with lowercased name)
+///
+/// ```ignore
+/// is_instance_of = {
+///     base: BaseClass,        // as_base() -> BaseClass
+///     collection: JCollection, // as_collection() -> JCollection
+///     JThrowable,             // as_jthrowable() -> JThrowable
+/// }
+/// ```
+///
+/// ## Method Blocks: `constructors`, `methods`, `native_methods`
+///
+/// These blocks define constructor, method, and native method bindings using either
+/// shorthand or block syntax. See the [`jni_sig!`] macro for signature syntax details.
+///
+/// ### Automatic Name Conversion: `snake_case` to `lowerCamelCase`
+///
+/// When no explicit Java method name is provided, Rust method names are automatically
+/// converted from `snake_case` to `lowerCamelCase` with the following rules:
+///
+/// - Names with uppercase letters are preserved as-is (e.g., `My_Method`, `MY_METHOD`)
+/// - One leading underscore is removed (e.g., `_my_method` → `myMethod`) (This allows
+///   private bindings like `_my_method` to map to `myMethod`, leaving the `my_method`
+///   name available for public wrapper methods)
+/// - When capitalizing after underscores, the first non-digit character is capitalized
+///   (e.g., `my_2d_api` → `my2DApi`, `array_3d` → `array3D`)
+///
+/// Examples:
+/// - `get_user_name` → `getUserName`
+/// - `_my_private` → `myPrivate`
+/// - `my_2d_array` → `my2DArray`
+/// - `MY_CONSTANT` → `MY_CONSTANT` (unchanged)
+/// - `myMethod` → `myMethod` (unchanged)
+///
+/// ### Shorthand Syntax
+///
+/// ```ignore
+/// [visibility] [static] [raw] [extern] fn name(params) -> return_type
+/// ```
+///
+/// - `visibility`: Optional visibility modifier (`pub`, `priv`, `pub(crate)`, etc.) (not applicable to `native_methods`)
+/// - `static`: Marks method as static (applies to `methods` and `native_methods`)
+/// - `raw`: For `native_methods` only - function receives `EnvUnowned` directly, with no `catch_unwind` wrapper or `Result` error mapping
+/// - `extern`: For `native_methods` only - generates JNI export symbol
+///
+/// ### Block Syntax
+///
+/// ```ignore
+/// [visibility] [static] [raw] [extern] fn name {
+///     [name = "javaMethodName",]
+///     sig = (params) -> return_type,
+///     [error_policy = ErrorPolicy,]  // native_methods only
+///     [export = true | false | "CustomName",]  // native_methods only
+///     [fn = function_path,]  // native_methods only
+/// }
+/// ```
+///
+/// The leading qualifiers (`[visibility]`, `[static]`, `[raw]`, `[extern]`) are the same
+/// as for shorthand syntax.
+///
+/// Block syntax properties:
+///
+/// - `name`: Optional custom Java method name (string literal). If omitted, uses automatic name conversion.
+/// - `sig`: Method signature (required). See [`jni_sig!`] macro for syntax details.
+/// - `error_policy`: *(native_methods only)* Custom error handling policy (e.g., `jni::errors::LogErrorAndDefault`).
+///   Controls how `Result` errors are converted to JNI exceptions or default values.
+/// - `export`: *(native_methods only)* Controls JNI export symbol generation:
+///   - `true`: Generate auto-mangled JNI export name
+///   - `false`: Don't generate export (override global `export_native_methods`)
+///   - `"CustomName"`: Use custom export name (string literal)
+/// - `fn`: *(native_methods only)* Path to function implementing this native method.
+///   When specified, bypasses the trait implementation and directly uses the provided function.
+///   The expected function signature depends on whether `raw` is used:
+///   - Without `raw`: Function receives `&mut Env` and returns `Result<T, E>`
+///   - With `raw`: Function receives `EnvUnowned` and returns the value directly
+///
+/// ### Constructor Examples
+///
+/// ```ignore
+/// constructors = {
+///     // Shorthand: no-arg constructor
+///     fn new(),
+///
+///     // Shorthand: constructor with parameters
+///     fn with_value(value: jint),
+///
+///     // Block syntax with custom Java name
+///     fn create_empty {
+///         name = "createEmpty",
+///         sig = () -> void,
+///     },
+/// }
+/// ```
+///
+/// ### Method Examples
+///
+/// ```ignore
+/// methods = {
+///     // Shorthand instance method
+///     fn get_value() -> jint,
+///
+///     // Shorthand static method
+///     static fn get_default() -> MyType,
+///
+///     // Private visibility
+///     priv fn internal_helper() -> jint,
+///
+///     // Block syntax with custom name
+///     fn get_user_info {
+///         name = "getUserDetails",
+///         sig = () -> java.lang.String,
+///     },
+///
+///     // Static method with block syntax
+///     static fn create_instance {
+///         sig = (name: java.lang.String) -> MyType,
+///     },
+/// }
+/// ```
+///
+/// ### Native Method Examples
+///
+/// Native methods must be implemented by providing a trait implementation.
+/// By default, implementations receive `&mut Env` and return `Result<T, E>`.
+///
+/// ```ignore
+/// native_methods = {
+///     // Shorthand: instance method
+///     fn native_add(a: jint, b: jint) -> jint,
+///
+///     // Shorthand: static method
+///     static fn native_initialize() -> jboolean,
+///
+///     // Export with auto-mangled JNI name
+///     extern fn native_exported(value: jint) -> jint,
+///
+///     // Raw function: receives EnvUnowned, returns value directly
+///     raw fn native_raw {
+///         sig = (value: jint) -> jint,
+///         fn = my_raw_function,
+///     },
+///
+///     // Custom error handling policy
+///     fn native_risky {
+///         sig = (value: jint) -> jint,
+///         error_policy = jni::errors::LogErrorAndDefault,
+///     },
+///
+///     // Control export behavior
+///     fn native_not_exported {
+///         sig = (value: jint) -> jint,
+///         export = false,
+///     },
+///
+///     fn native_custom_export {
+///         sig = (value: jint) -> jint,
+///         export = "Java_com_example_Custom_exportName",
+///     },
+/// }
+/// ```
+///
+/// Implement the generated trait:
+///
+/// ```ignore
+/// impl MyTypeNativeInterface for MyTypeAPI {
+///     type Error = jni::errors::Error;
+///
+///     fn native_add<'local>(
+///         env: &mut Env<'local>,
+///         this: MyType<'local>,
+///         a: jint,
+///         b: jint,
+///     ) -> Result<jint, Self::Error> {
+///         Ok(a + b)
+///     }
+///
+///     fn native_initialize<'local>(
+///         env: &mut Env<'local>,
+///         class: JClass<'local>,
+///     ) -> Result<jboolean, Self::Error> {
+///         // Initialization logic
+///         Ok(true)
+///     }
+/// }
+/// ```
+///
+/// For `raw` native methods, implement the function directly:
+///
+/// ```ignore
+/// extern "system" fn my_raw_function<'local>(
+///     env: EnvUnowned<'local>,
+///     this: MyType<'local>,
+///     value: jint,
+/// ) -> jint {
+///     value * 2
+/// }
+/// ```
+///
+/// ## Field Block: `fields`
+///
+/// Defines field bindings with getter and setter methods. Fields can be instance
+/// or static, and use either shorthand or block syntax.
+///
+/// Field names follow the same [automatic name conversion](#automatic-name-conversion-snake_case-to-lowercamelcase)
+/// as methods when no explicit Java field name is provided.
+///
+/// ### Shorthand Syntax
+///
+/// ```ignore
+/// [visibility] [static] name: type
+/// ```
+///
+/// Generates getter and setter methods as `name()` and `set_name()`.
+///
+/// ### Block Syntax
+///
+/// ```ignore
+/// [visibility] [static] name {
+///     [name = "javaFieldName",]
+///     sig = type,
+///     [get = getter_name,]
+///     [set = setter_name,]
+/// }
+/// ```
+///
+/// Custom getter/setter names and documentation can be specified:
+///
+/// ```ignore
+/// fields = {
+///     // Shorthand: generates value() and set_value()
+///     value: jint,
+///
+///     // Static field
+///     static default_value: jint,
+///
+///     // Block syntax with custom Java name
+///     internal_state {
+///         name = "internalState",
+///         sig = jboolean,
+///     },
+///
+///     // Custom getter/setter names with separate documentation
+///     special_field {
+///         sig = jint,
+///         /// Gets the special field value
+///         get = get_special_value,
+///         /// Sets the special field value
+///         set = set_special_value,
+///     },
+///
+///     // Different visibility for getter and setter
+///     pub user_name {
+///         sig = java.lang.String,
+///         get = user_name,          // public getter
+///         priv set = set_user_name, // private setter
+///     },
+/// }
+/// ```
+///
+/// ## Special Properties
+///
+/// ### `jni`
+///
+/// Override the path to the `jni` crate. Must be specified first if provided.
+///
+/// ```ignore
+/// bind_java_type! {
+///     jni = ::my_jni_crate,
+///     rust_type = MyType,
+///     java_type = "com.example.MyClass",
+/// }
+/// ```
+///
+/// ### `api`
+///
+/// Custom name for the generated API struct (default: `{Type}API`).
+///
+/// ```ignore
+/// api = MyCustomAPI
+/// ```
+///
+/// ### `native_trait`
+///
+/// Custom name for the generated native methods trait (default: `{Type}NativeInterface`).
+///
+/// ```ignore
+/// native_trait = MyCustomTrait
+/// ```
+///
+/// ### `export_native_methods`
+///
+/// Controls whether native methods generate JNI export symbols by default (default: `true`).
+/// Individual methods can override this with `export = true/false`.
+///
+/// ```ignore
+/// export_native_methods = false  // Don't export by default
+/// ```
+///
+/// ### `priv_type` and `hooks`
+///
+/// For advanced use cases, you can inject custom data into the API struct and
+/// override class loading behavior.
+///
+/// ```ignore
+/// bind_java_type! {
+///     rust_type = MyType,
+///     java_type = "com.example.MyClass",
+///     priv_type = MyPrivateData,
+///     hooks {
+///         load_class = |env, load_context, initialize| {
+///             load_context.load_class_for_type::<MyType>(env, initialize)
+///         },
+///         init_priv = |env, class, load_context| {
+///             Ok(MyPrivateData::new())
+///         },
+///     },
+/// }
+/// ```
+///
+/// The `priv_type` is stored as a `private` field in the API struct and must
+/// implement `Send + Sync`. The `init_priv` hook is called during API initialization.
 #[proc_macro]
 pub fn bind_java_type(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     bind_java_type::bind_java_type_impl(input.into())
