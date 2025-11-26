@@ -250,8 +250,7 @@ impl Parse for SignatureInput {
                 signature = Some(parse_signature(input, &type_mappings)?);
             }
 
-            // Parse optional trailing comma
-            if input.peek(Token![,]) {
+            if !input.is_empty() {
                 input.parse::<Token![,]>()?;
             }
         }

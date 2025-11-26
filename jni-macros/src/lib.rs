@@ -6,6 +6,75 @@ mod str;
 mod types;
 mod utils;
 
+/// Converts UTF-8 string literals to a MUTF-8 encoded `&'static JNIStr`.
+///
+/// This macro takes one or more literals and encodes them using Java's Modified UTF-8
+/// (MUTF-8) format, returning a `&'static JNIStr`.
+///
+/// Like the `concat!` macro, multiple literals can be provided and will be converted to
+/// strings and concatenated before encoding.
+///
+/// Supported literal types:
+/// - String literals (`"..."`)
+/// - Character literals (`'c'`)
+/// - Integer literals (`42`, `-10`)
+/// - Float literals (`3.14`, `1.0`)
+/// - Boolean literals (`true`, `false`)
+/// - Byte literals (`b'A'` - formatted as numeric value)
+/// - C-string literals (`c"..."` - must be valid UTF-8)
+///
+/// MUTF-8 is Java's variant of UTF-8 that:
+/// - Encodes the null character (U+0000) as `0xC0 0x80` instead of `0x00`
+/// - Encodes Unicode characters above U+FFFF using CESU-8 (surrogate pairs)
+///
+/// This is the most type-safe way to create JNI string literals, as it returns a
+/// `JNIStr` which is directly compatible with the jni crate's API.
+///
+/// # Syntax
+///
+/// ```ignore
+/// jni_str!("string literal")
+/// jni_str!("part1", "part2", "part3")  // Concatenates before encoding
+/// jni_str!("value: ", 42)               // Mix different literal types
+/// jni_str!(jni = path::to::jni, "string literal")  // Override jni crate path (must be first)
+/// ```
+///
+/// # Examples
+///
+/// ```ignore
+/// use jni::strings::JNIStr;
+///
+/// const CLASS_NAME: &JNIStr = jni_str!("java.lang.String");
+/// // Result: &'static JNIStr for "java.lang.String" (MUTF-8 encoded)
+///
+/// const EMOJI_CLASS: &JNIStr = jni_str!("unicode.Type😀");
+/// // Result: &'static JNIStr with emoji encoded as surrogate pair
+///
+/// const PACKAGE_CLASS: &JNIStr = jni_str!("java.lang.", "String");
+/// // Result: &'static JNIStr for "java.lang.String" (concatenated then MUTF-8 encoded)
+///
+/// const PORT: &JNIStr = jni_str!("localhost:", 8080);
+/// // Result: &'static JNIStr for "localhost:8080" (mixed literal types concatenated)
+/// ```
+#[proc_macro]
+pub fn jni_str(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    str::jni_str_impl(input.into())
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
+
+/// Converts UTF-8 string literals to a MUTF-8 encoded CStr literal.
+///
+/// This macro is equivalent to [`jni_str!`] but returns a `&CStr` instead of a `&'static JNIStr`.
+///
+/// See the [`jni_str!`] macro documentation for detailed syntax and examples.
+#[proc_macro]
+pub fn jni_cstr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    str::jni_cstr_impl(input.into())
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
+
 /// Parses a JNI method or field signature at compile time.
 ///
 /// This macro parses method and field signatures with syntax like `(arg0: JString, arg1: jint) ->
@@ -341,120 +410,6 @@ pub fn jni_sig_jstr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         .into()
 }
 
-/// Converts UTF-8 string literals to a MUTF-8 encoded CStr literal.
-///
-/// This macro takes one or more literals and encodes them using Java's Modified UTF-8
-/// (MUTF-8) format, returning a `&CStr` literal.
-///
-/// Like the `concat!` macro, multiple literals can be provided and will be converted to
-/// strings and concatenated before encoding.
-///
-/// Supported literal types:
-/// - String literals (`"..."`)
-/// - Character literals (`'c'`)
-/// - Integer literals (`42`, `-10`)
-/// - Float literals (`3.14`, `1.0`)
-/// - Boolean literals (`true`, `false`)
-/// - Byte literals (`b'A'` - formatted as numeric value)
-/// - C-string literals (`c"..."` - must be valid UTF-8)
-///
-/// MUTF-8 is Java's variant of UTF-8 that:
-/// - Encodes the null character (U+0000) as `0xC0 0x80` instead of `0x00`
-/// - Encodes Unicode characters above U+FFFF using CESU-8 (surrogate pairs)
-///
-/// This is useful when you need to pass string literals to JNI functions that expect
-/// MUTF-8 encoded strings.
-///
-/// # Syntax
-///
-/// ```ignore
-/// jni_cstr!("string literal")
-/// jni_cstr!("part1", "part2", "part3")  // Concatenates before encoding
-/// jni_cstr!("value: ", 42)               // Mix different literal types
-/// jni_cstr!(jni = path::to::jni, "string literal")  // Override jni crate path (must be first)
-/// ```
-///
-/// # Examples
-///
-/// ```ignore
-/// use std::ffi::CStr;
-///
-/// const CLASS_NAME: &CStr = jni_cstr!("java.lang.String");
-/// // Result: c"java.lang.String" (MUTF-8 encoded)
-///
-/// const EMOJI_CLASS: &CStr = jni_cstr!("unicode.Type😀");
-/// // Result: c"unicode.Type\xed\xa0\xbd\xed\xb8\x80" (emoji encoded as surrogate pair)
-///
-/// const PACKAGE_CLASS: &CStr = jni_cstr!("java.lang.", "String");
-/// // Result: c"java.lang.String" (concatenated then MUTF-8 encoded)
-///
-/// const VERSION: &CStr = jni_cstr!("Version ", 1, '.', 2);
-/// // Result: c"Version 1.2" (mixed literal types concatenated)
-/// ```
-#[proc_macro]
-pub fn jni_cstr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    str::jni_cstr_impl(input.into())
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
-}
-
-/// Converts UTF-8 string literals to a MUTF-8 encoded `&'static JNIStr`.
-///
-/// This macro takes one or more literals and encodes them using Java's Modified UTF-8
-/// (MUTF-8) format, returning a `&'static JNIStr`.
-///
-/// Like the `concat!` macro, multiple literals can be provided and will be converted to
-/// strings and concatenated before encoding.
-///
-/// Supported literal types:
-/// - String literals (`"..."`)
-/// - Character literals (`'c'`)
-/// - Integer literals (`42`, `-10`)
-/// - Float literals (`3.14`, `1.0`)
-/// - Boolean literals (`true`, `false`)
-/// - Byte literals (`b'A'` - formatted as numeric value)
-/// - C-string literals (`c"..."` - must be valid UTF-8)
-///
-/// MUTF-8 is Java's variant of UTF-8 that:
-/// - Encodes the null character (U+0000) as `0xC0 0x80` instead of `0x00`
-/// - Encodes Unicode characters above U+FFFF using CESU-8 (surrogate pairs)
-///
-/// This is the most type-safe way to create JNI string literals, as it returns a
-/// `JNIStr` which is directly compatible with the jni crate's API.
-///
-/// # Syntax
-///
-/// ```ignore
-/// jni_str!("string literal")
-/// jni_str!("part1", "part2", "part3")  // Concatenates before encoding
-/// jni_str!("value: ", 42)               // Mix different literal types
-/// jni_str!(jni = path::to::jni, "string literal")  // Override jni crate path (must be first)
-/// ```
-///
-/// # Examples
-///
-/// ```ignore
-/// use jni::strings::JNIStr;
-///
-/// const CLASS_NAME: &JNIStr = jni_str!("java.lang.String");
-/// // Result: &'static JNIStr for "java.lang.String" (MUTF-8 encoded)
-///
-/// const EMOJI_CLASS: &JNIStr = jni_str!("unicode.Type😀");
-/// // Result: &'static JNIStr with emoji encoded as surrogate pair
-///
-/// const PACKAGE_CLASS: &JNIStr = jni_str!("java.lang.", "String");
-/// // Result: &'static JNIStr for "java.lang.String" (concatenated then MUTF-8 encoded)
-///
-/// const PORT: &JNIStr = jni_str!("localhost:", 8080);
-/// // Result: &'static JNIStr for "localhost:8080" (mixed literal types concatenated)
-/// ```
-#[proc_macro]
-pub fn jni_str(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    str::jni_str_impl(input.into())
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
-}
-
 /// Export a Rust function with a JNI-compatible, mangled method name.
 ///
 /// This adds an appropriate `#[export_name = "..."]` attribute and `extern
@@ -638,142 +593,6 @@ pub fn jni_mangle(
     mangle::jni_mangle2(attr.into(), item.into()).into()
 }
 
-/// Binds a Java type to a Rust type with methods, fields, and native methods.
-///
-/// This macro generates a complete [Reference] type binding for a Java class, including:
-/// - API struct for caching a class reference with method/field IDs
-/// - Reference trait implementation
-/// - Constructor, method, and field bindings
-/// - Safe native methods binding trait
-/// - Native method registration and exports
-/// - Type aliases
-///
-/// The generated bindings include self-check assertions to ensure that declared
-/// casts and type mappings are valid at runtime.
-///
-/// [Reference]: https://docs.rs/jni/latest/jni/refs/trait.Reference.html
-/// # Syntax
-///
-/// ```
-/// # use jni::Env;
-/// # use jni::objects::{JClass, JString};
-/// # use jni::sys::{jint, jboolean};
-/// # use jni::jni_str;
-/// # use jni::refs::LoaderContext;
-/// use jni::bind_java_type;
-///
-/// // Shorthand syntax can be used for trivial bindings
-/// bind_java_type! { CustomType => com.example.CustomClass }
-///
-/// bind_java_type! {
-///     rust_type = MyType,
-///     java_type = "com.example.MyClass",
-///     type_map = {
-///         CustomType => com.example.CustomClass,
-///     },
-///     is_instance_of = {
-///        collection: JCollection,
-///     },
-///     constructors = {
-///         /// Constructor with no arguments.
-///         fn new(),
-///         /// Constructor with a jint argument.
-///         fn new_with_value(value: jint),
-///     },
-///     methods = {
-///         /// Instance method returning a JString.
-///         fn my_method(arg: jint, arg1: JString) -> CustomType,
-///         priv fn _my_private_method() -> jint,
-///         static fn my_static_method(arg: jint, arg1: JString) -> CustomType,
-///     },
-///     fields = {
-///         /// Instance field of type jint.
-///         my_field: jint,
-///         static my_static_field: jint,
-///     },
-///     native_methods = {
-///         fn my_native(val: bool) -> JString,
-///         static fn my_static_native(val: bool) -> JString
-///     }
-/// }
-///
-/// // Generates:
-/// // - struct MyTypeAPI { ... }
-/// //      - MyTypeAPI::get(&Env, &LoaderContext) -> Result<&'static MyTypeAPI>
-/// //          - Caches class reference, method IDs, field IDs
-/// //          - Asserts type mappings and is_instance_of relationships are valid
-/// //          - Registers native methods
-/// // - struct MyType { ... }
-/// // - impl Reference for MyType<'local> { ... }
-/// // - impl MyTypeAPI { ... }
-/// // - impl From<MyType<'local>> for JObject<'local> { ... }
-/// // - impl From<MyType<'local>> for JCollection<'local> { ... }
-/// // - trait MyTypeNativeInterface { ... }
-///
-/// /// Safely implementable `<Type>NativeInterface` trait for native methods.
-/// impl MyTypeNativeInterface for MyTypeAPI {
-///    type Error = jni::errors::Error;
-///    fn my_native<'local>(env: &mut Env<'local>, this: MyType<'local>, val: bool) -> jni::errors::Result<JString<'local>> {
-///        JString::new(env, if val { "TRUE" } else { "FALSE" })
-///    }
-///    fn my_static_native<'local>(env: &mut Env<'local>, class: JClass<'local>, val: bool) -> jni::errors::Result<JString<'local>> {
-///        JString::new(env, if val { "TRUE" } else { "FALSE" })
-///    }
-/// }
-///
-/// impl MyTypeAPI {
-///    /// Example wrapper of private method binding.
-///    pub fn my_wrapper_method(&self, env: &Env<'_>, obj: MyType<'_>) -> jni::errors::Result<jint> {
-///        let api = MyTypeAPI::get(env, &LoaderContext::default())?;
-///        obj._my_private_method(env)
-///    }
-/// }
-///
-/// fn use_my_type<'local>(env: &mut Env<'local>) -> jni::errors::Result<()> {
-///     let my_obj = MyType::new_with_value(env, 42)?;
-///
-///     let msg = JString::new(env, "Hello")?;
-///     my_obj.my_method(env, 42, msg)?;
-///
-///     let field_value = my_obj.my_field(env)?;
-///     my_obj.set_my_field(env, 100)?;
-///
-///     let my_collection = my_obj.as_collection();
-///     my_collection.clear(env)?;
-///     Ok(())
-/// }
-/// ```
-///
-/// # Common Properties
-///
-/// - `rust_type`: The Rust type name for the generated Reference wrapper (required)
-/// - `java_type`: The fully-qualified Java class name (required)
-/// - `type_map`: Type mappings from Rust type names to Java classes (used in signatures)
-/// - `is_instance_of`: List of other Reference types this type can be cast to
-/// - `constructors`: Constructor definitions
-/// - `static_methods`: Static method definitions
-/// - `methods`: Instance method definitions
-/// - `static_fields`: Static field definitions
-/// - `fields`: Instance field definitions
-/// - `native_methods`: Native method definitions
-/// - `static_native_methods`: Static native method definitions
-///
-/// # Special-case Properties
-/// - `jni`: Optional custom path to the jni crate (default: auto-detected, must be first)
-/// - `api`: Optional custom name for the generated API struct (default: `{Type}API`)
-/// - `priv_type`: Optional name of a custom type to insert into API struct as `private: {priv_type}` member (must also implement `priv_init` hook)
-/// - `hook`: Optional hooks for overriding generated code (e.g. `load_class`, `priv_init`)
-/// - `native_trait`: Name for the generated native methods trait
-/// - `export_native_methods`: Override whether to generate mangled native method exports (default: true)
-///
-/// TODO
-#[proc_macro]
-pub fn bind_java_type(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    bind_java_type::bind_java_type_impl(input.into())
-        .unwrap_or_else(|e| e.to_compile_error())
-        .into()
-}
-
 /// Creates a compile-time type-checked `NativeMethod` descriptor for a native method.
 ///
 /// This macro generates a `NativeMethod` struct with a compile-time guarantee that the
@@ -936,3 +755,145 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
         .unwrap_or_else(|e| e.to_compile_error())
         .into()
 }
+
+/// Binds a Java type to a Rust type with methods, fields, and native methods.
+///
+/// This macro generates a complete [Reference] type binding for a Java class, including:
+/// - API struct for caching a class reference with method/field IDs
+/// - Reference trait implementation
+/// - Constructor, method, and field bindings
+/// - Safe native methods binding trait
+/// - Native method registration and exports
+/// - Type aliases
+///
+/// The generated bindings include self-check assertions to ensure that declared
+/// casts and type mappings are valid at runtime.
+///
+/// [Reference]: https://docs.rs/jni/latest/jni/refs/trait.Reference.html
+/// # Syntax
+///
+/// ```
+/// # use jni::Env;
+/// # use jni::objects::{JClass, JString};
+/// # use jni::sys::{jint, jboolean};
+/// # use jni::jni_str;
+/// # use jni::refs::LoaderContext;
+/// use jni::bind_java_type;
+///
+/// // Shorthand syntax can be used for trivial bindings
+/// bind_java_type! { CustomType => com.example.CustomClass }
+///
+/// bind_java_type! {
+///     rust_type = MyType,
+///     java_type = "com.example.MyClass",
+///     type_map = {
+///         CustomType => com.example.CustomClass,
+///     },
+///     is_instance_of = {
+///        collection: JCollection,
+///     },
+///     constructors = {
+///         /// Constructor with no arguments.
+///         fn new(),
+///         /// Constructor with a jint argument.
+///         fn new_with_value(value: jint),
+///     },
+///     methods = {
+///         /// Instance method returning a JString.
+///         fn my_method(arg: jint, arg1: JString) -> CustomType,
+///         priv fn _my_private_method() -> jint,
+///         static fn my_static_method(arg: jint, arg1: JString) -> CustomType,
+///         fn my_long_form_method = {
+///             name = "myLongformMethod",
+///             sig = (arg: jlong, arg1: JString) -> CustomType
+///         }
+///     },
+///     fields = {
+///         /// Instance field of type jint.
+///         my_field: jint,
+///         static my_static_field: jint,
+///     },
+///     native_methods = {
+///         fn my_native(val: bool) -> JString,
+///         static fn my_static_native(val: bool) -> JString,
+///         static fn my_raw_native = {
+///             sig = (val: jboolean) -> JString,
+///             fn = my_raw_native_impl
+///         }
+///     }
+/// }
+///
+/// // Generates:
+/// // - struct MyTypeAPI { ... }
+/// //      - MyTypeAPI::get(&Env, &LoaderContext) -> Result<&'static MyTypeAPI>
+/// //          - Caches class reference, method IDs, field IDs
+/// //          - Asserts type mappings and is_instance_of relationships are valid
+/// //          - Registers native methods
+/// // - struct MyType { ... }
+/// // - impl Reference for MyType<'local> { ... }
+/// // - impl MyTypeAPI { ... }
+/// // - impl From<MyType<'local>> for JObject<'local> { ... }
+/// // - impl From<MyType<'local>> for JCollection<'local> { ... }
+/// // - trait MyTypeNativeInterface { ... }
+///
+/// /// Safely implementable `<Type>NativeInterface` trait for native methods.
+/// impl MyTypeNativeInterface for MyTypeAPI {
+///    type Error = jni::errors::Error;
+///    fn my_native<'local>(env: &mut Env<'local>, this: MyType<'local>, val: bool) -> jni::errors::Result<JString<'local>> {
+///        JString::new(env, if val { "TRUE" } else { "FALSE" })
+///    }
+///    fn my_static_native<'local>(env: &mut Env<'local>, class: JClass<'local>, val: bool) -> jni::errors::Result<JString<'local>> {
+///        JString::new(env, if val { "TRUE" } else { "FALSE" })
+///    }
+/// }
+///
+/// impl MyTypeAPI {
+///    /// Example wrapper of private method binding.
+///    pub fn my_wrapper_method(&self, env: &Env<'_>, obj: MyType<'_>) -> jni::errors::Result<jint> {
+///        let api = MyTypeAPI::get(env, &LoaderContext::default())?;
+///        obj._my_private_method(env)
+///    }
+/// }
+///
+/// fn use_my_type<'local>(env: &mut Env<'local>) -> jni::errors::Result<()> {
+///     let my_obj = MyType::new_with_value(env, 42)?;
+///
+///     let msg = JString::new(env, "Hello")?;
+///     my_obj.my_method(env, 42, msg)?;
+///
+///     let field_value = my_obj.my_field(env)?;
+///     my_obj.set_my_field(env, 100)?;
+///
+///     let my_collection = my_obj.as_collection();
+///     my_collection.clear(env)?;
+///     Ok(())
+/// }
+/// ```
+///
+/// # Common Properties
+///
+/// - `rust_type`: The Rust type name for the generated Reference wrapper (required)
+/// - `java_type`: The fully-qualified Java class name (required)
+/// - `type_map`: Type mappings from Rust type names to Java classes (used in signatures)
+/// - `is_instance_of`: List of other Reference types this type can be cast to
+/// - `constructors`: Constructor definitions
+/// - `methods`: Method definitions
+/// - `fields`: Field definitions
+/// - `native_methods`: Native method definitions
+///
+/// # Special-case Properties
+/// - `jni`: Optional custom path to the jni crate (default: auto-detected, must be first)
+/// - `api`: Optional custom name for the generated API struct (default: `{Type}API`)
+/// - `priv_type`: Optional name of a custom type to insert into API struct as `private: {priv_type}` member (must also implement `priv_init` hook)
+/// - `hooks`: Optional hooks for overriding generated code (e.g. `load_class`, `priv_init`)
+/// - `native_trait`: Name for the generated native methods trait
+/// - `export_native_methods`: Override whether to generate mangled native method exports (default: true)
+///
+/// TODO
+#[proc_macro]
+pub fn bind_java_type(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    bind_java_type::bind_java_type_impl(input.into())
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
+

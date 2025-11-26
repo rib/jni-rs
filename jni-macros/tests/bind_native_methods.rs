@@ -757,26 +757,15 @@ fn test_raw_native_functions() {
 
 // Bindings for TestNativeExported class (testing exported native methods)
 bind_java_type! {
-    rust_type = TestNativeExported,
+    rust_type = TestNativeExported0,
     java_type = "com.example.TestNativeExported",
-    export_native_methods = true,  // Enable export for auto-discovery
+    //export_native_methods = true,  // Default is true, shown here for clarity
     native_methods {
-        static fn native_init_value {
-            sig = () -> jint,
-            export = true,  // Explicitly export for JVM discovery
-        },
-        static fn native_get_version {
-            sig = () -> JString,
-            export = true,
-        },
-        fn native_double_value {
-            sig = (value: jint) -> jint,
-            export = true,
-        },
+        static fn native_init_value() -> jint,
     }
 }
 
-impl TestNativeExportedNativeInterface for TestNativeExportedAPI {
+impl TestNativeExported0NativeInterface for TestNativeExported0API {
     type Error = jni::errors::Error;
 
     fn native_init_value<'local>(
@@ -786,6 +775,20 @@ impl TestNativeExportedNativeInterface for TestNativeExportedAPI {
         println!("native_init_value called via exported function!");
         Ok(999)
     }
+}
+
+bind_java_type! {
+    rust_type = TestNativeExported1,
+    java_type = "com.example.TestNativeExported",
+    export_native_methods = false,
+    native_methods {
+        // A short-form signature with 'extern' indicates that the function should be exported
+        static extern fn native_get_version() -> JString,
+    }
+}
+
+impl TestNativeExported1NativeInterface for TestNativeExported1API {
+    type Error = jni::errors::Error;
 
     fn native_get_version<'local>(
         env: &mut Env<'local>,
@@ -793,10 +796,50 @@ impl TestNativeExportedNativeInterface for TestNativeExportedAPI {
     ) -> Result<JString<'local>, Self::Error> {
         JString::from_str(env, "v1.0-exported")
     }
+}
+
+bind_java_type! {
+    rust_type = TestNativeExported2,
+    java_type = "com.example.TestNativeExported",
+    export_native_methods = false,
+    native_methods {
+        fn native_double_value {
+            sig = (value: jint) -> jint,
+            export = true,
+        },
+    }
+}
+
+impl TestNativeExported2NativeInterface for TestNativeExported2API {
+    type Error = jni::errors::Error;
 
     fn native_double_value<'local>(
         _env: &mut Env<'local>,
-        _this: TestNativeExported<'local>,
+        _this: TestNativeExported2<'local>,
+        value: jint,
+    ) -> Result<jint, Self::Error> {
+        Ok(value * 2)
+    }
+}
+
+bind_java_type! {
+    rust_type = TestNativeExported3,
+    java_type = "com.example.TestNativeExported",
+    export_native_methods = false,
+    native_methods {
+        fn native_echo_value {
+            sig = (value: jint) -> jint,
+            export = "Java_com_example_TestNativeExported_nativeEchoValue",
+        },
+    }
+}
+
+impl TestNativeExported3NativeInterface for TestNativeExported3API {
+    type Error = jni::errors::Error;
+
+    fn native_echo_value<'local>(
+        _env: &mut Env<'local>,
+        _this: TestNativeExported3<'local>,
         value: jint,
     ) -> Result<jint, Self::Error> {
         Ok(value * 2)
@@ -805,35 +848,11 @@ impl TestNativeExportedNativeInterface for TestNativeExportedAPI {
 
 #[test]
 fn test_exported_native_methods_exist() {
-    // Test that the exported mangled function names exist
-    // by assigning them to variables. This will cause a compile-time
-    // error if the functions don't exist.
-
-    // These are the expected JNI mangled function names for the exported methods
-    /*
-    unsafe extern "system" {
-        fn Java_com_example_TestNativeExported_nativeInitValue__(
-            env: jni::sys::JNIEnv,
-            class: jni::sys::jclass,
-        ) -> jni::sys::jint;
-
-        fn Java_com_example_TestNativeExported_nativeGetVersion__(
-            env: jni::sys::JNIEnv,
-            class: jni::sys::jclass,
-        ) -> jni::sys::jstring;
-
-        fn Java_com_example_TestNativeExported_nativeDoubleValue__I(
-            env: jni::sys::JNIEnv,
-            this: jni::sys::jobject,
-            value: jni::sys::jint,
-        ) -> jni::sys::jint;
-    }
-    */
-
     // Assign to variables to verify they exist
     let _init_fn = Java_com_example_TestNativeExported_nativeInitValue__;
     let _version_fn = Java_com_example_TestNativeExported_nativeGetVersion__;
     let _double_fn = Java_com_example_TestNativeExported_nativeDoubleValue__I;
+    let _echo_fn = Java_com_example_TestNativeExported_nativeEchoValue;
 
     println!("All exported native method functions exist!");
 }

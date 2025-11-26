@@ -32,7 +32,7 @@ bind_java_type! {
         // Should be exported with custom name
         fn method_three {
             sig = (value: jint) -> jint,
-            export = "customMethodThree",
+            export = "Java_customMethodThreeDefault",
         },
     }
 }
@@ -110,6 +110,9 @@ bind_java_type! {
     java_type = "com.example.TestExportDisabled",
     export_native_methods = false,
     native_methods = {
+        // With the short-form method signature syntax, use 'extern' to explicitly export
+        extern fn method_zero(value: jint) -> JString,
+
         // Should NOT be exported (global default is false, no override)
         fn method_one {
             sig = (value: jint) -> jint,
@@ -124,13 +127,23 @@ bind_java_type! {
         // Should be exported with custom name
         fn method_three {
             sig = (value: jint) -> jint,
-            export = "customMethodThree",
+            export = "Java_customMethodThreeDisabled",
         },
     }
 }
 
 impl TestExportDisabledNativeInterface for TestExportDisabledAPI {
     type Error = jni::errors::Error;
+
+    fn method_zero<'local>(
+        _env: &mut jni::Env<'local>,
+        _this: TestExportDisabled<'local>,
+        value: jni::sys::jint,
+    ) -> Result<jni::objects::JString<'local>, Self::Error> {
+        let s = format!("Value: {}", value);
+        let jstr = jni::objects::JString::from_str(_env, &s)?;
+        Ok(jstr)
+    }
 
     fn method_one<'local>(
         _env: &mut jni::Env<'local>,
