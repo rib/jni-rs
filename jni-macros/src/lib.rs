@@ -971,7 +971,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///
 /// ### Shorthand Syntax
 ///
-/// ```ignore
+/// ```custom
 /// [visibility] [static] [raw] [extern] fn name(params) -> return_type
 /// ```
 ///
@@ -997,7 +997,8 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///
 /// Block syntax properties:
 ///
-/// - `name`: Optional custom Java method name (string literal). If omitted, uses automatic name conversion.
+/// - `name`: *(methods and native_methods only)* Optional custom Java method name (string literal).
+///   If omitted, uses automatic name conversion. Not applicable to constructors (which always use `<init>`).
 /// - `sig`: Method signature (required). See [`jni_sig!`] macro for syntax details.
 /// - `error_policy`: *(native_methods only)* Custom error handling policy (e.g., `jni::errors::LogErrorAndDefault`).
 ///   Controls how `Result` errors are converted to JNI exceptions or default values.
@@ -1021,10 +1022,9 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///     // Shorthand: constructor with parameters
 ///     fn with_value(value: jint),
 ///
-///     // Block syntax with custom Java name
-///     fn create_empty {
-///         name = "createEmpty",
-///         sig = () -> void,
+///     // Block syntax (no name property - constructors are always named "<init>")
+///     fn with_string {
+///         sig = (value: java.lang.String) -> void,
 ///     },
 /// }
 /// ```
@@ -1057,25 +1057,144 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///
 /// ### Native Method Examples
 ///
-/// Native methods must be implemented by providing a trait implementation.
-/// By default, implementations receive `&mut Env` and return `Result<T, E>`.
+/// Native methods can be implemented in two ways: via a trait implementation (default)
+/// or by directly providing a function with the `fn` property.
+///
+/// #### Default: Trait Implementation with Automatic Wrapping
+///
+/// By default, trait implementations receive `&mut Env` and return `Result<T, E>`.
+/// The macro automatically wraps these implementations with:
+///
+/// 1. **Panic safety**: `catch_unwind` via `EnvUnowned::with_env`
+/// 2. **Error handling**: `ErrorPolicy` to convert `Result` to a value
+///
+/// The generated wrapper effectively does this:
+///
+/// ```ignore
+/// fn _generated_wrapper<'local>(
+///     mut unowned_env: EnvUnowned<'local>,
+///     this: MyType<'local>,
+///     a: jint,
+///     b: jint,
+/// ) -> jint {
+///     let outcome = unowned_env.with_env(|env| -> jni::errors::Result<_> {
+///         // Your trait implementation is called here
+///         <MyTypeAPI as MyTypeNativeInterface>::native_add(env, this, a, b)
+///     });
+///     // Convert Result to value using error policy (default: ThrowRuntimeExAndDefault)
+///     outcome.resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+/// }
+/// ```
+///
+/// **Builtin Error Policies:**
+/// - `ThrowRuntimeExAndDefault` - Throws `RuntimeException` and returns default value (default)
+/// - `LogErrorAndDefault` - Logs error and returns default value
+///
+/// You can specify a custom error policy per method:
 ///
 /// ```ignore
 /// native_methods = {
-///     // Shorthand: instance method
+///     fn native_risky {
+///         sig = (value: jint) -> jint,
+///         error_policy = jni::errors::LogErrorAndDefault,
+///     },
+/// }
+/// ```
+///
+/// #### Raw Native Methods: Direct Implementation
+///
+/// The `raw` qualifier bypasses the automatic wrapping. Raw methods:
+/// - Receive `EnvUnowned` directly (not `&mut Env`)
+/// - Return values directly (not `Result`)
+/// - Have **no** `catch_unwind` wrapper
+/// - Have **no** automatic error handling
+///
+/// Raw methods can still be implemented via the trait or with `fn = function`:
+///
+/// ```ignore
+/// native_methods = {
+///     // Raw method via trait
+///     raw fn native_raw_trait(value: jint) -> jint,
+///
+///     // Raw method with direct function
+///     raw fn native_raw_direct {
+///         sig = (value: jint) -> jint,
+///         fn = my_raw_function,
+///     },
+/// }
+///
+/// // Trait implementation for raw method
+/// impl MyTypeNativeInterface for MyTypeAPI {
+///     fn native_raw_trait<'local>(
+///         env: EnvUnowned<'local>,
+///         this: MyType<'local>,
+///         value: jint,
+///     ) -> jint {
+///         value * 2
+///     }
+/// }
+///
+/// // Direct function for raw method
+/// fn my_raw_function<'local>(
+///     env: EnvUnowned<'local>,
+///     this: MyType<'local>,
+///     value: jint,
+/// ) -> jint {
+///     value * 3
+/// }
+/// ```
+///
+/// #### Direct Function Implementation: Bypassing the Trait
+///
+/// The `fn` property allows you to bypass the trait entirely and provide a direct
+/// function implementation. This works with both normal and raw methods:
+///
+/// ```ignore
+/// native_methods = {
+///     // Non-raw with direct function (still gets wrapped with catch_unwind)
+///     fn native_with_function {
+///         sig = (value: jint) -> jint,
+///         fn = my_safe_function,
+///     },
+///
+///     // Raw with direct function (no wrapping)
+///     raw fn native_raw_function {
+///         sig = (value: jint) -> jint,
+///         fn = my_raw_function,
+///     },
+/// }
+///
+/// // Non-raw function (returns Result, gets automatic error handling)
+/// fn my_safe_function<'local>(
+///     env: &mut Env<'local>,
+///     this: MyType<'local>,
+///     value: jint,
+/// ) -> Result<jint, jni::errors::Error> {
+///     Ok(value * 2)
+/// }
+///
+/// // Raw function (no Result, no catch_unwind wrapping)
+/// fn my_raw_function<'local>(
+///     env: EnvUnowned<'local>,
+///     this: MyType<'local>,
+///     value: jint,
+/// ) -> jint {
+///     value * 3
+/// }
+/// ```
+///
+/// #### Complete Example
+///
+/// ```ignore
+/// native_methods = {
+///     // Shorthand: instance method via trait
 ///     fn native_add(a: jint, b: jint) -> jint,
 ///
-///     // Shorthand: static method
+///     // Static method via trait
 ///     static fn native_initialize() -> jboolean,
 ///
 ///     // Export with auto-mangled JNI name
 ///     extern fn native_exported(value: jint) -> jint,
-///
-///     // Raw function: receives EnvUnowned, returns value directly
-///     raw fn native_raw {
-///         sig = (value: jint) -> jint,
-///         fn = my_raw_function,
-///     },
 ///
 ///     // Custom error handling policy
 ///     fn native_risky {
@@ -1083,20 +1202,30 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///         error_policy = jni::errors::LogErrorAndDefault,
 ///     },
 ///
+///     // Direct function implementation (bypasses trait)
+///     fn native_direct {
+///         sig = (value: jint) -> jint,
+///         fn = my_implementation,
+///     },
+///
+///     // Raw method via trait
+///     raw fn native_raw_trait(value: jint) -> jint,
+///
+///     // Raw method with direct function
+///     raw fn native_raw_direct {
+///         sig = (value: jint) -> jint,
+///         fn = my_raw_function,
+///     },
+///
 ///     // Control export behavior
 ///     fn native_not_exported {
 ///         sig = (value: jint) -> jint,
 ///         export = false,
 ///     },
-///
-///     fn native_custom_export {
-///         sig = (value: jint) -> jint,
-///         export = "Java_com_example_Custom_exportName",
-///     },
 /// }
 /// ```
 ///
-/// Implement the generated trait:
+/// Implement the trait for methods without `fn` property:
 ///
 /// ```ignore
 /// impl MyTypeNativeInterface for MyTypeAPI {
@@ -1115,21 +1244,197 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///         env: &mut Env<'local>,
 ///         class: JClass<'local>,
 ///     ) -> Result<jboolean, Self::Error> {
-///         // Initialization logic
 ///         Ok(true)
+///     }
+///
+///     fn native_exported<'local>(
+///         env: &mut Env<'local>,
+///         this: MyType<'local>,
+///         value: jint,
+///     ) -> Result<jint, Self::Error> {
+///         Ok(value + 1)
+///     }
+///
+///     fn native_risky<'local>(
+///         env: &mut Env<'local>,
+///         this: MyType<'local>,
+///         value: jint,
+///     ) -> Result<jint, Self::Error> {
+///         if value < 0 {
+///             Err(jni::errors::Error::JniCall(jni::errors::JniError::Unknown))
+///         } else {
+///             Ok(value * 2)
+///         }
+///     }
+///
+///     fn native_raw_trait<'local>(
+///         env: EnvUnowned<'local>,
+///         this: MyType<'local>,
+///         value: jint,
+///     ) -> jint {
+///         value * 2
+///     }
+///
+///     fn native_not_exported<'local>(
+///         env: &mut Env<'local>,
+///         this: MyType<'local>,
+///         value: jint,
+///     ) -> Result<jint, Self::Error> {
+///         Ok(value + 10)
 ///     }
 /// }
 /// ```
 ///
-/// For `raw` native methods, implement the function directly:
+/// #### Native Method Exporting
+///
+/// The `extern` qualifier or `export` property controls whether a JNI export symbol
+/// is generated. This is independent of `raw` and `fn` - you can export any native method.
+///
+/// When exporting is enabled (via `extern`, `export = true`, or the default
+/// `export_native_methods = true`), the macro generates an additional wrapper function
+/// with the proper JNI mangled name and `extern "system"` ABI:
 ///
 /// ```ignore
-/// extern "system" fn my_raw_function<'local>(
-///     env: EnvUnowned<'local>,
+/// #[unsafe(no_mangle)]
+/// #[allow(non_snake_case)]
+/// pub unsafe extern "system" fn Java_com_example_MyType_myMethod__I<'local>(
+///     mut unowned_env: ::jni::EnvUnowned<'local>,
 ///     this: MyType<'local>,
+///     value: ::jni::sys::jint,
+/// ) -> ::jni::sys::jint {
+///     // Calls the internal wrapper (which may or may not have catch_unwind/error handling)
+///     MyTypeAPI::my_method_native_method(unowned_env, this, value)
+/// }
+/// ```
+///
+/// This export wrapper allows the JVM to discover and call the native method using
+/// standard JNI name resolution. The export wrapper simply forwards to the internal
+/// implementation, which may be:
+/// - A trait method with automatic wrapping (default)
+/// - A raw trait method without wrapping
+/// - A direct function with `fn = function`
+///
+/// Control export behavior:
+///
+/// ```ignore
+/// bind_java_type! {
+///     rust_type = MyType,
+///     java_type = "com.example.MyType",
+///     export_native_methods = false,  // Disable exports by default
+///     native_methods = {
+///         // Not exported (global default)
+///         fn method_one(value: jint) -> jint,
+///
+///         // Explicitly exported with auto-mangled name
+///         extern fn method_two(value: jint) -> jint,
+///
+///         // Explicitly exported with custom name
+///         fn method_three {
+///             sig = (value: jint) -> jint,
+///             export = "Java_com_custom_CustomName",
+///         },
+///
+///         // Explicitly not exported (override global default)
+///         fn method_four {
+///             sig = (value: jint) -> jint,
+///             export = false,
+///         },
+///     }
+/// }
+/// ```
+///
+/// #### Complete Working Example
+///
+/// ```
+/// # use jni::bind_java_type;
+/// # use jni::{Env, EnvUnowned};
+/// # use jni::objects::{JClass, JString};
+/// # use jni::sys::jint;
+/// #
+/// bind_java_type! {
+///     rust_type = ExampleType,
+///     java_type = "com.example.ExampleType",
+///     export_native_methods = false,
+///     native_methods = {
+///         // Trait implementation, wrapped with catch_unwind
+///         fn native_add(a: jint, b: jint) -> jint,
+///
+///         // Static method via trait
+///         static fn native_initialize() -> jint,
+///
+///         // Exported method (generates JNI export symbol)
+///         extern fn native_exported(value: jint) -> jint,
+///
+///         // Direct function implementation (bypasses trait)
+///         fn native_direct {
+///             sig = (value: jint) -> jint,
+///             fn = my_implementation,
+///         },
+///
+///         // Raw method via trait (no wrapping)
+///         raw fn native_raw_trait(value: jint) -> jint,
+///
+///         // Raw method with direct function
+///         raw fn native_raw_direct {
+///             sig = (value: jint) -> jint,
+///             fn = my_raw_function,
+///         },
+///     }
+/// }
+///
+/// // Implement the trait for methods without `fn` property
+/// impl ExampleTypeNativeInterface for ExampleTypeAPI {
+///     type Error = jni::errors::Error;
+///
+///     fn native_add<'local>(
+///         _env: &mut Env<'local>,
+///         _this: ExampleType<'local>,
+///         a: jint,
+///         b: jint,
+///     ) -> Result<jint, Self::Error> {
+///         Ok(a + b)
+///     }
+///
+///     fn native_initialize<'local>(
+///         _env: &mut Env<'local>,
+///         _class: JClass<'local>,
+///     ) -> Result<jint, Self::Error> {
+///         Ok(42)
+///     }
+///
+///     fn native_exported<'local>(
+///         _env: &mut Env<'local>,
+///         _this: ExampleType<'local>,
+///         value: jint,
+///     ) -> Result<jint, Self::Error> {
+///         Ok(value + 1)
+///     }
+///
+///     fn native_raw_trait<'local>(
+///         _env: EnvUnowned<'local>,
+///         _this: ExampleType<'local>,
+///         value: jint,
+///     ) -> jint {
+///         value * 2
+///     }
+/// }
+///
+/// // Direct function implementation (non-raw, returns Result)
+/// fn my_implementation<'local>(
+///     _env: &mut Env<'local>,
+///     _this: ExampleType<'local>,
+///     value: jint,
+/// ) -> Result<jint, jni::errors::Error> {
+///     Ok(value * 3)
+/// }
+///
+/// // Raw function implementation (no Result, no wrapping)
+/// fn my_raw_function<'local>(
+///     _env: EnvUnowned<'local>,
+///     _this: ExampleType<'local>,
 ///     value: jint,
 /// ) -> jint {
-///     value * 2
+///     value * 4
 /// }
 /// ```
 ///
@@ -1143,7 +1448,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///
 /// ### Shorthand Syntax
 ///
-/// ```ignore
+/// ```custom
 /// [visibility] [static] name: type
 /// ```
 ///
