@@ -4,7 +4,7 @@ warning: unused import: `jint`
 4 | use jni::sys::{jint, jlong};
   |                ^^^^
   |
-  = note: `#[warn(unused_imports)]` on by default
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
 
 error[E0308]: mismatched types
   --> tests/ui/native_method_struct/fail/wrong_parameter_type.rs:20:16

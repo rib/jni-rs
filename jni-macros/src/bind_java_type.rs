@@ -3157,7 +3157,14 @@ fn generate_native_trait(
         let lifetime = quote! { 'local };
 
         let mut params = Vec::new();
-        params.push(quote! { env: &mut #jni::Env<'local> });
+
+        // Raw methods take EnvUnowned directly, regular methods take &mut Env
+        if method.is_raw {
+            params.push(quote! { unowned_env: #jni::EnvUnowned<'local> });
+        } else {
+            params.push(quote! { env: &mut #jni::Env<'local> });
+        }
+
         params.push(quote! { this: #type_name<'local> });
 
         for param in &method.method_signature.parameters {
@@ -3177,10 +3184,18 @@ fn generate_native_trait(
 
         let attrs = &method.attrs;
 
-        method_sigs.push(quote! {
-            #(#attrs)*
-            fn #rust_name<'local>(#(#params),*) -> ::std::result::Result<#return_type, Self::Error>;
-        });
+        // Raw methods return the value directly, regular methods return Result
+        if method.is_raw {
+            method_sigs.push(quote! {
+                #(#attrs)*
+                fn #rust_name<'local>(#(#params),*) -> #return_type;
+            });
+        } else {
+            method_sigs.push(quote! {
+                #(#attrs)*
+                fn #rust_name<'local>(#(#params),*) -> ::std::result::Result<#return_type, Self::Error>;
+            });
+        }
     }
 
     // Generate static native method signatures
@@ -3194,7 +3209,14 @@ fn generate_native_trait(
         let lifetime = quote! { 'local };
 
         let mut params = Vec::new();
-        params.push(quote! { env: &mut #jni::Env<'local> });
+
+        // Raw methods take EnvUnowned directly, regular methods take &mut Env
+        if method.is_raw {
+            params.push(quote! { unowned_env: #jni::EnvUnowned<'local> });
+        } else {
+            params.push(quote! { env: &mut #jni::Env<'local> });
+        }
+
         params.push(quote! { class: #jni::objects::JClass<'local> });
 
         for param in &method.method_signature.parameters {
@@ -3214,10 +3236,18 @@ fn generate_native_trait(
 
         let attrs = &method.attrs;
 
-        method_sigs.push(quote! {
-            #(#attrs)*
-            fn #rust_name<'local>(#(#params),*) -> ::std::result::Result<#return_type, Self::Error>;
-        });
+        // Raw methods return the value directly, regular methods return Result
+        if method.is_raw {
+            method_sigs.push(quote! {
+                #(#attrs)*
+                fn #rust_name<'local>(#(#params),*) -> #return_type;
+            });
+        } else {
+            method_sigs.push(quote! {
+                #(#attrs)*
+                fn #rust_name<'local>(#(#params),*) -> ::std::result::Result<#return_type, Self::Error>;
+            });
+        }
     }
 
     // If there are no methods that need trait implementations, don't generate the trait

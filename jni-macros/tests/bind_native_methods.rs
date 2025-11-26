@@ -10,14 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 // Raw JNI function implementations for testing unsafe fn feature
-extern "system" fn raw_add_impl<'local>(
-    _env: EnvUnowned<'local>,
-    _this: TestNativeRaw<'local>,
-    a: jint,
-    b: jint,
-) -> jint {
-    a + b
-}
+// (raw_add is now implemented via trait, so no function pointer needed)
 
 extern "system" fn raw_is_positive_impl<'local>(
     _env: EnvUnowned<'local>,
@@ -638,7 +631,7 @@ impl TestNativeStaticInitNativeInterface for TestNativeStaticInitAPI {
     }
 }
 
-// Bindings for TestNativeRaw class (testing raw unsafe function pointers)
+// Bindings for TestNativeRaw class (testing unwrapped "raw" native methods with+without trait methods)
 bind_java_type! {
     rust_type = TestNativeRaw,
     java_type = "com.example.TestNativeRaw",
@@ -654,12 +647,12 @@ bind_java_type! {
         static fn call_raw_is_even(value: jint) -> jboolean,
     },
     native_methods {
-        // Raw unsafe function pointers
+        // Raw method implemented via trait (no fn =)
         fn raw_add {
             sig = (a: jint, b: jint) -> jint,
-            fn = raw_add_impl,
             raw = true,
         },
+        // Raw method with direct function pointer
         fn raw_is_positive {
             sig = (value: jint) -> jboolean,
             fn = raw_is_positive_impl,
@@ -688,10 +681,21 @@ bind_java_type! {
     }
 }
 
-// Implement only the regular (non-raw) method
+// Implement trait methods (both raw and regular)
 impl TestNativeRawNativeInterface for TestNativeRawAPI {
     type Error = jni::errors::Error;
 
+    // Raw method implementation - takes EnvUnowned and returns value directly (no Result)
+    fn raw_add<'local>(
+        _unowned_env: EnvUnowned<'local>,
+        _this: TestNativeRaw<'local>,
+        a: jint,
+        b: jint,
+    ) -> jint {
+        a + b
+    }
+
+    // Regular method implementation - takes &mut Env and returns Result
     fn regular_method<'local>(
         _env: &mut Env<'local>,
         _this: TestNativeRaw<'local>,
