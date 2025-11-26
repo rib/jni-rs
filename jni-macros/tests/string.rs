@@ -248,9 +248,7 @@ fn test_special_characters() {
 
 #[test]
 fn test_long_package_name() {
-    const LONG: &CStr = jni_cstr!(
-        "com.example.very.long.package.name.with.many.segments.MyClass"
-    );
+    const LONG: &CStr = jni_cstr!("com.example.very.long.package.name.with.many.segments.MyClass");
 
     assert_eq!(
         LONG.to_str().unwrap(),
@@ -258,7 +256,7 @@ fn test_long_package_name() {
     );
     verify_roundtrip(
         "com.example.very.long.package.name.with.many.segments.MyClass",
-        LONG.to_bytes()
+        LONG.to_bytes(),
     );
 }
 

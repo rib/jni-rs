@@ -41,5 +41,4 @@ fn main() {
     }
 
     const MY_CLASS: &JNIStr = get_class();
-
 }

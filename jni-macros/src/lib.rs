@@ -860,22 +860,22 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///
 /// - Names with uppercase letters are preserved as-is (e.g., `My_Method`,
 ///   `MY_METHOD`)
-/// - One leading underscore is removed (e.g., `_my_method` → `myMethod`) (This
+/// - One leading underscore is removed (e.g., `_my_method` -> `myMethod`) (This
 ///   allows private bindings like `_my_method` to map to `myMethod`, leaving
 ///   the `my_method` name available for public wrapper methods)
 /// - When capitalizing after underscores, the first non-digit character is
-///   capitalized (e.g., `my_2d_api` → `my2DApi`, `array_3d` → `array3D`)
+///   capitalized (e.g., `my_2d_api` -> `my2DApi`, `array_3d` -> `array3D`)
 ///
 /// Examples:
-/// - `get_user_name` → `getUserName`
-/// - `_my_private` → `myPrivate`
-/// - `my_2d_array` → `my2DArray`
-/// - `MY_CONSTANT` → `MY_CONSTANT` (unchanged)
-/// - `myMethod` → `myMethod` (unchanged)
+/// - `get_user_name` -> `getUserName`
+/// - `_my_private` -> `myPrivate`
+/// - `my_2d_array` -> `my2DArray`
+/// - `MY_CONSTANT` -> `MY_CONSTANT` (unchanged)
+/// - `myMethod` -> `myMethod` (unchanged)
 ///
 /// # Properties Reference
 ///
-/// ## `rust_type` (required)
+/// ## `rust_type` Property (required)
 ///
 /// The Rust type name for the generated Reference wrapper.
 ///
@@ -883,7 +883,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// rust_type = MyType
 /// ```
 ///
-/// ## `java_type` (required)
+/// ## `java_type` Property (required)
 ///
 /// The fully-qualified Java class name. Can be specified as:
 /// - Dot-separated identifiers: `java.lang.String` or `com.example.MyClass`
@@ -899,7 +899,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// java_type = "com.example.Outer$Inner"
 /// ```
 ///
-/// ## `type_map`
+/// ## `type_map` Block
 ///
 /// Maps Rust type names to Java class names for use in method/field signatures.
 /// This allows using custom Rust types in signatures throughout the binding.
@@ -952,7 +952,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///
 /// Note: Aliases for array types are not supported.
 ///
-/// ## `is_instance_of`
+/// ## `is_instance_of` Block
 ///
 /// Declares that this type can be safely cast to other Reference types. The
 /// macro generates `From` implementations and runtime validation to ensure the
@@ -969,7 +969,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///     JThrowable,             // From traits only, no as_ method
 /// }
 /// ```
-/// ## `fields`
+/// ## `fields` Block
 ///
 /// Defines field bindings with getter and setter methods. Fields can be
 /// instance or static, and use either shorthand or block syntax.
@@ -1094,7 +1094,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///   - With `raw`: Function receives `EnvUnowned` and returns the value
 ///     directly
 ///
-/// ## `constructors`
+/// ## `constructors` Block
 ///
 /// ```ignore
 /// constructors = {
@@ -1111,7 +1111,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// }
 /// ```
 ///
-/// ## `methods`
+/// ## `methods` Block
 ///
 /// ```ignore
 /// methods = {
@@ -1137,7 +1137,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// }
 /// ```
 ///
-/// ## `native_methods`
+/// ## `native_methods` Block
 ///
 /// Native methods can be implemented in two ways: via a trait implementation
 /// (default) or by directly providing a function with the `fn` property.
@@ -1581,7 +1581,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// The following properties shouldn't be needed for most use cases, but are
 /// available for special-case scenarios.
 ///
-/// ### `jni`
+/// ### `jni` Property
 ///
 /// Override the path to the `jni` crate. Must be specified first if provided.
 ///
@@ -1593,7 +1593,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// }
 /// ```
 ///
-/// ### `api`
+/// ### `api` Property
 ///
 /// Custom name for the generated API struct (default: `{Type}API`).
 ///
@@ -1601,7 +1601,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// api = MyCustomAPI
 /// ```
 ///
-/// ### `native_trait`
+/// ### `native_trait` Property
 ///
 /// Custom name for the generated native methods trait (default:
 /// `{Type}NativeInterface`).
@@ -1610,7 +1610,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// native_trait = MyCustomTrait
 /// ```
 ///
-/// ### `export_native_methods`
+/// ### `export_native_methods` Property
 ///
 /// Controls whether native methods generate JNI export symbols by default
 /// (default: `true`). Individual methods can override this with `export =
@@ -1619,6 +1619,52 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// ```ignore
 /// export_native_methods = false  // Don't export by default
 /// ```
+///
+/// ### `error_policy` Property
+///
+/// Sets a global default error handling policy for all non-raw `native_methods` in
+/// this binding. When a native method implemented via the generated trait returns
+/// `Result<T, E>`, this policy determines how an `Err(E)` is converted into a JNI
+/// exception and a default value.
+///
+/// This global policy is only used when a method does not specify its own
+/// `error_policy` in the method block. Per-method policies take precedence.
+///
+/// Supported values are paths to types implementing the `ErrorPolicy` trait in
+/// the `jni::errors` module, for example:
+/// - `jni::errors::ThrowRuntimeExAndDefault` (default if not specified)
+/// - `jni::errors::LogErrorAndDefault`
+///
+/// ```ignore
+/// bind_java_type! {
+///     rust_type = MyType,
+///     java_type = "com.example.MyClass",
+///     // Use a global policy for all non-raw native methods
+///     error_policy = jni::errors::LogErrorAndDefault,
+///     native_methods = {
+///         // Inherits the global policy
+///         fn compute(a: jint, b: jint) -> jint,
+///
+///         // Overrides the global policy for this method only
+///         fn risky_compute {
+///             sig = (value: jint) -> jint,
+///             error_policy = jni::errors::ThrowRuntimeExAndDefault,
+///         },
+///
+///         // Raw methods do not use error policies
+///         raw fn fast_path(a: jint) -> jint,
+///     }
+/// }
+/// ```
+///
+/// Notes:
+/// - The policy is applied inside the generated wrapper that calls your trait
+///   implementation using `EnvUnowned::with_env`.
+/// - Raw native methods (`raw`) bypass error handling completely and thus ignore
+///   both global and per-method policies.
+/// - Direct function implementations provided via `fn = path::to::func` follow
+///   the same rules: if non-raw and returning `Result`, the policy applies; if raw,
+///   it does not.
 ///
 /// ### `priv_type` and `hooks`
 ///
@@ -1645,7 +1691,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// implement `Send + Sync`. The `init_priv` hook is called during API
 /// initialization.
 ///
-/// ## Wrapper Macros
+/// # Wrapper Macros
 ///
 /// You can easily create custom wrapper macros around `bind_java_type!` to
 /// encapsulate common configuration across multiple bindings in your crate. This
@@ -1658,7 +1704,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// The wrapper macro doesn't need to understand the `bind_java_type!` syntax - it
 /// simply injects additional properties before forwarding to the actual macro.
 ///
-/// ### Example Wrapper Macro
+/// ## Example Wrapper Macro
 ///
 /// ```
 /// # use jni::bind_java_type;
@@ -1710,4 +1756,3 @@ pub fn bind_java_type(input: proc_macro::TokenStream) -> proc_macro::TokenStream
         .unwrap_or_else(|e| e.to_compile_error())
         .into()
 }
-
