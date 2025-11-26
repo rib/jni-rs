@@ -758,7 +758,8 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 
 /// Binds a Java type to a Rust type with methods, fields, and native methods.
 ///
-/// This macro generates a complete [Reference] type binding for a Java class, including:
+/// This macro generates a complete [Reference] type binding for a Java class,
+/// including:
 /// - API struct for caching a class reference with method/field IDs
 /// - Reference trait implementation
 /// - Constructor, method, and field bindings
@@ -837,17 +838,40 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///
 /// The macro generates:
 /// - `struct MyType<'local>` - Reference wrapper type
-/// - `struct MyTypeAPI` - Singleton API struct with cached class and method/field IDs
+/// - `struct MyTypeAPI` - Singleton API struct with cached class and
+///   method/field IDs
 /// - `impl Reference for MyType<'local>` - Reference trait implementation
 /// - `trait MyTypeNativeInterface` - Safe trait for implementing native methods
 /// - `impl From<MyType<'local>> for JObject<'local>` - Conversion to JObject
-/// - `impl From<MyType<'local>> for <IsInstanceOf>` - Conversions for declared parent types
+/// - `impl From<MyType<'local>> for <IsInstanceOf>` - Conversions for declared
+///   parent types
 ///
 /// The `MyTypeAPI::get(&Env, &LoaderContext)` method:
 /// - Lazily loads and caches the Java class reference
 /// - Caches all method IDs and field IDs
 /// - Validates type mappings and `is_instance_of` relationships at runtime
 /// - Registers native methods with the JVM
+///
+/// # Automatic Name Conversion: `snake_case` to `lowerCamelCase`
+///
+/// When no explicit Java method name is provided, for methods or fields, Rust
+/// names are automatically converted from `snake_case` to `lowerCamelCase` with
+/// the following rules:
+///
+/// - Names with uppercase letters are preserved as-is (e.g., `My_Method`,
+///   `MY_METHOD`)
+/// - One leading underscore is removed (e.g., `_my_method` → `myMethod`) (This
+///   allows private bindings like `_my_method` to map to `myMethod`, leaving
+///   the `my_method` name available for public wrapper methods)
+/// - When capitalizing after underscores, the first non-digit character is
+///   capitalized (e.g., `my_2d_api` → `my2DApi`, `array_3d` → `array3D`)
+///
+/// Examples:
+/// - `get_user_name` → `getUserName`
+/// - `_my_private` → `myPrivate`
+/// - `my_2d_array` → `my2DArray`
+/// - `MY_CONSTANT` → `MY_CONSTANT` (unchanged)
+/// - `myMethod` → `myMethod` (unchanged)
 ///
 /// # Properties Reference
 ///
@@ -898,8 +922,8 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// ### Unsafe Primitive Type Mappings
 ///
 /// Maps Rust types to Java primitive types using the `unsafe` keyword. This is
-/// particularly useful for Rust types that transparently wrap a pointer (e.g., handles)
-/// that need to be passed to Java as a `long`:
+/// particularly useful for Rust types that transparently wrap a pointer (e.g.,
+/// handles) that need to be passed to Java as a `long`:
 ///
 /// ```ignore
 /// type_map = {
@@ -909,13 +933,14 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// }
 /// ```
 ///
-/// These mappings are marked `unsafe` because the macro cannot verify type safety
-/// between the Rust type and Java primitive type.
+/// These mappings are marked `unsafe` because the macro cannot verify type
+/// safety between the Rust type and Java primitive type.
 ///
 /// ### Type Aliases
 ///
-/// Creates aliases for existing type mappings using the `typealias` keyword. This
-/// can improve readability in signatures before defining full type bindings:
+/// Creates aliases for existing type mappings using the `typealias` keyword.
+/// This can improve readability in signatures before defining full type
+/// bindings:
 ///
 /// ```ignore
 /// type_map = {
@@ -929,45 +954,27 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///
 /// ## `is_instance_of`
 ///
-/// Declares that this type can be safely cast to other Reference types. The macro
-/// generates `From` implementations and runtime validation to ensure the relationships
-/// are valid.
+/// Declares that this type can be safely cast to other Reference types. The
+/// macro generates `From` implementations and runtime validation to ensure the
+/// relationships are valid.
 ///
 /// Supports two syntaxes:
-/// - With explicit stem name: `stem: Type` (generates `as_stem()` method)
-/// - Without stem: `Type` (generates `as_type()` method with lowercased name)
+/// - With explicit stem name: `stem: Type` (generates `as_stem()` method and `From` traits)
+/// - Without stem: `Type` (generates only `From` traits, no `as_` method)
 ///
 /// ```ignore
 /// is_instance_of = {
-///     base: BaseClass,        // as_base() -> BaseClass
-///     collection: JCollection, // as_collection() -> JCollection
-///     JThrowable,             // as_jthrowable() -> JThrowable
+///     base: BaseClass,        // as_base() -> BaseClass (+ From traits)
+///     collection: JCollection, // as_collection() -> JCollection (+ From traits)
+///     JThrowable,             // From traits only, no as_ method
 /// }
 /// ```
 ///
-/// ## Method Blocks: `constructors`, `methods`, `native_methods`
+/// ## All Method Blocks: `constructors`, `methods`, `native_methods`
 ///
-/// These blocks define constructor, method, and native method bindings using either
-/// shorthand or block syntax. See the [`jni_sig!`] macro for signature syntax details.
-///
-/// ### Automatic Name Conversion: `snake_case` to `lowerCamelCase`
-///
-/// When no explicit Java method name is provided, Rust method names are automatically
-/// converted from `snake_case` to `lowerCamelCase` with the following rules:
-///
-/// - Names with uppercase letters are preserved as-is (e.g., `My_Method`, `MY_METHOD`)
-/// - One leading underscore is removed (e.g., `_my_method` → `myMethod`) (This allows
-///   private bindings like `_my_method` to map to `myMethod`, leaving the `my_method`
-///   name available for public wrapper methods)
-/// - When capitalizing after underscores, the first non-digit character is capitalized
-///   (e.g., `my_2d_api` → `my2DApi`, `array_3d` → `array3D`)
-///
-/// Examples:
-/// - `get_user_name` → `getUserName`
-/// - `_my_private` → `myPrivate`
-/// - `my_2d_array` → `my2DArray`
-/// - `MY_CONSTANT` → `MY_CONSTANT` (unchanged)
-/// - `myMethod` → `myMethod` (unchanged)
+/// These blocks define constructor, method, and native method bindings using
+/// either shorthand or block syntax. See the [`jni_sig!`] macro for signature
+/// syntax details.
 ///
 /// ### Shorthand Syntax
 ///
@@ -975,9 +982,12 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// [visibility] [static] [raw] [extern] fn name(params) -> return_type
 /// ```
 ///
-/// - `visibility`: Optional visibility modifier (`pub`, `priv`, `pub(crate)`, etc.) (not applicable to `native_methods`)
-/// - `static`: Marks method as static (applies to `methods` and `native_methods`)
-/// - `raw`: For `native_methods` only - function receives `EnvUnowned` directly, with no `catch_unwind` wrapper or `Result` error mapping
+/// - `visibility`: Optional visibility modifier (`pub`, `priv`, `pub(crate)`,
+///   etc.) (not applicable to `native_methods`)
+/// - `static`: Marks method as static (applies to `methods` and
+///   `native_methods`)
+/// - `raw`: For `native_methods` only - function receives `EnvUnowned`
+///   directly, with no `catch_unwind` wrapper or `Result` error mapping
 /// - `extern`: For `native_methods` only - generates JNI export symbol
 ///
 /// ### Block Syntax
@@ -992,27 +1002,32 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// }
 /// ```
 ///
-/// The leading qualifiers (`[visibility]`, `[static]`, `[raw]`, `[extern]`) are the same
-/// as for shorthand syntax.
+/// The leading qualifiers (`[visibility]`, `[static]`, `[raw]`, `[extern]`) are
+/// the same as for shorthand syntax.
 ///
 /// Block syntax properties:
 ///
-/// - `name`: *(methods and native_methods only)* Optional custom Java method name (string literal).
-///   If omitted, uses automatic name conversion. Not applicable to constructors (which always use `<init>`).
-/// - `sig`: Method signature (required). See [`jni_sig!`] macro for syntax details.
-/// - `error_policy`: *(native_methods only)* Custom error handling policy (e.g., `jni::errors::LogErrorAndDefault`).
-///   Controls how `Result` errors are converted to JNI exceptions or default values.
+/// - `name`: *(methods and native_methods only)* Optional custom Java method
+///   name (string literal). If omitted, uses automatic name conversion. Not
+///   applicable to constructors (which always use `<init>`).
+/// - `sig`: Method signature (required). See [`jni_sig!`] macro for syntax
+///   details.
+/// - `error_policy`: *(native_methods only)* Custom error handling policy
+///   (e.g., `jni::errors::LogErrorAndDefault`). Controls how `Result` errors
+///   are converted to JNI exceptions or default values.
 /// - `export`: *(native_methods only)* Controls JNI export symbol generation:
 ///   - `true`: Generate auto-mangled JNI export name
 ///   - `false`: Don't generate export (override global `export_native_methods`)
 ///   - `"CustomName"`: Use custom export name (string literal)
-/// - `fn`: *(native_methods only)* Path to function implementing this native method.
-///   When specified, bypasses the trait implementation and directly uses the provided function.
-///   The expected function signature depends on whether `raw` is used:
+/// - `fn`: *(native_methods only)* Path to function implementing this native
+///   method. When specified, bypasses the trait implementation and directly
+///   uses the provided function. The expected function signature depends on
+///   whether `raw` is used:
 ///   - Without `raw`: Function receives `&mut Env` and returns `Result<T, E>`
-///   - With `raw`: Function receives `EnvUnowned` and returns the value directly
+///   - With `raw`: Function receives `EnvUnowned` and returns the value
+///     directly
 ///
-/// ### Constructor Examples
+/// ## `constructors`
 ///
 /// ```ignore
 /// constructors = {
@@ -1029,7 +1044,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// }
 /// ```
 ///
-/// ### Method Examples
+/// ## `methods`
 ///
 /// ```ignore
 /// methods = {
@@ -1055,15 +1070,15 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// }
 /// ```
 ///
-/// ### Native Method Examples
+/// ## `native_methods`
 ///
-/// Native methods can be implemented in two ways: via a trait implementation (default)
-/// or by directly providing a function with the `fn` property.
+/// Native methods can be implemented in two ways: via a trait implementation
+/// (default) or by directly providing a function with the `fn` property.
 ///
 /// #### Default: Trait Implementation with Automatic Wrapping
 ///
-/// By default, trait implementations receive `&mut Env` and return `Result<T, E>`.
-/// The macro automatically wraps these implementations with:
+/// By default, trait implementations receive `&mut Env` and return `Result<T,
+/// E>`. The macro automatically wraps these implementations with:
 ///
 /// 1. **Panic safety**: `catch_unwind` via `EnvUnowned::with_env`
 /// 2. **Error handling**: `ErrorPolicy` to convert `Result` to a value
@@ -1087,7 +1102,8 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// ```
 ///
 /// **Builtin Error Policies:**
-/// - `ThrowRuntimeExAndDefault` - Throws `RuntimeException` and returns default value (default)
+/// - `ThrowRuntimeExAndDefault` - Throws `RuntimeException` and returns default
+///   value (default)
 /// - `LogErrorAndDefault` - Logs error and returns default value
 ///
 /// You can specify a custom error policy per method:
@@ -1146,8 +1162,8 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///
 /// #### Direct Function Implementation: Bypassing the Trait
 ///
-/// The `fn` property allows you to bypass the trait entirely and provide a direct
-/// function implementation. This works with both normal and raw methods:
+/// The `fn` property allows you to bypass the trait entirely and provide a
+/// direct function implementation. This works with both normal and raw methods:
 ///
 /// ```ignore
 /// native_methods = {
@@ -1287,12 +1303,16 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///
 /// #### Native Method Exporting
 ///
-/// The `extern` qualifier or `export` property controls whether a JNI export symbol
-/// is generated. This is independent of `raw` and `fn` - you can export any native method.
+/// By default, all native methods are exported with JNI mangled names so that
+/// the JVM can discover them. This can be disabled globally by setting the
+/// `export_native_methods` property to `false` and then enabled per-method with
+/// the `extern` qualifier or `export` property.
+///
+/// Exporting is independent of `raw` and `fn` - you can export any native method.
 ///
 /// When exporting is enabled (via `extern`, `export = true`, or the default
-/// `export_native_methods = true`), the macro generates an additional wrapper function
-/// with the proper JNI mangled name and `extern "system"` ABI:
+/// `export_native_methods = true`), the macro generates an additional wrapper
+/// function with the proper JNI mangled name and `extern "system"` ABI:
 ///
 /// ```ignore
 /// #[unsafe(no_mangle)]
@@ -1307,9 +1327,9 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// }
 /// ```
 ///
-/// This export wrapper allows the JVM to discover and call the native method using
-/// standard JNI name resolution. The export wrapper simply forwards to the internal
-/// implementation, which may be:
+/// This export wrapper allows the JVM to discover and call the native method
+/// using standard JNI name resolution. The export wrapper simply forwards to
+/// the internal implementation, which may be:
 /// - A trait method with automatic wrapping (default)
 /// - A raw trait method without wrapping
 /// - A direct function with `fn = function`
@@ -1440,11 +1460,12 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///
 /// ## Field Block: `fields`
 ///
-/// Defines field bindings with getter and setter methods. Fields can be instance
-/// or static, and use either shorthand or block syntax.
+/// Defines field bindings with getter and setter methods. Fields can be
+/// instance or static, and use either shorthand or block syntax.
 ///
-/// Field names follow the same [automatic name conversion](#automatic-name-conversion-snake_case-to-lowercamelcase)
-/// as methods when no explicit Java field name is provided.
+/// Field names follow the same [automatic name
+/// conversion](#automatic-name-conversion-snake_case-to-lowercamelcase) as
+/// methods when no explicit Java field name is provided.
 ///
 /// ### Shorthand Syntax
 ///
@@ -1523,7 +1544,8 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///
 /// ### `native_trait`
 ///
-/// Custom name for the generated native methods trait (default: `{Type}NativeInterface`).
+/// Custom name for the generated native methods trait (default:
+/// `{Type}NativeInterface`).
 ///
 /// ```ignore
 /// native_trait = MyCustomTrait
@@ -1531,8 +1553,9 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///
 /// ### `export_native_methods`
 ///
-/// Controls whether native methods generate JNI export symbols by default (default: `true`).
-/// Individual methods can override this with `export = true/false`.
+/// Controls whether native methods generate JNI export symbols by default
+/// (default: `true`). Individual methods can override this with `export =
+/// true/false`.
 ///
 /// ```ignore
 /// export_native_methods = false  // Don't export by default
@@ -1560,7 +1583,8 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// ```
 ///
 /// The `priv_type` is stored as a `private` field in the API struct and must
-/// implement `Send + Sync`. The `init_priv` hook is called during API initialization.
+/// implement `Send + Sync`. The `init_priv` hook is called during API
+/// initialization.
 #[proc_macro]
 pub fn bind_java_type(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     bind_java_type::bind_java_type_impl(input.into())
