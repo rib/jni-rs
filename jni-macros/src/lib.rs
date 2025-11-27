@@ -82,8 +82,12 @@ pub fn jni_cstr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// corresponding JNI signature, including the raw string like
 /// "(Ljava/lang/String;I)Ljava/lang/String;" and enumerated argument plus return types.
 ///
-/// This macro can also parse raw JNI signature strings in order to validate them at compile time
-/// but it's recommended to use the structured syntax for better readability.
+/// This macro can also parse raw JNI signature strings like `"(Ljava/lang/String;I)Z"` in order to
+/// validate them at compile time but it's recommended to use the structured syntax for better
+/// readability.
+///
+/// **Note:** The signature and `type_map` syntax supported by this macro is also used by the
+/// [`bind_java_type`] and [`native_method`] macros.
 ///
 /// [MethodSignature]: https://docs.rs/jni/latest/jni/signature/struct.MethodSignature.html
 /// [FieldSignature]: https://docs.rs/jni/latest/jni/signature/struct.FieldSignature.html
@@ -94,8 +98,8 @@ pub fn jni_cstr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// ```ignore
 /// jni_sig!(
 ///     [jni = <path>],
-///     [sig =] <signature>,
 ///     [type_map = { ... }],
+///     [sig =] <signature>,
 /// )
 /// ```
 /// The parser automatically detects whether it's a method signature (has parentheses) or a field
@@ -105,17 +109,18 @@ pub fn jni_cstr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 ///
 /// - `jni = <path>` - Optionally override the jni crate path (default: auto-detected via
 ///   `proc_macro_crate`, must come first if given)
-/// - `sig = <signature>` - The signature ('`sig =`' prefix is optional for the signature)
 /// - `type_map = { RustType => java.lang.ClassName, ... }` - Optional type mappings for Rust types
+/// - `sig = <signature>` - The signature ('`sig =`' prefix is optional for the signature)
 ///
-/// The `sig` and `type_map` properties can appear in any order.
-///
-/// The `type_map` property can be provided multiple times (mappings are merged).
+/// The `type_map` property can be provided multiple times and mappings are merged.
 ///
 /// The design allows for a `macro_rules` wrapper to inject `jni =` or `type_map =` properties,
 /// without needing to parse anything else.
 ///
 /// # Type Syntax
+///
+/// Note: this syntax for signature types is also used by the [`bind_java_type`] and
+/// [`native_method`] macros.
 ///
 /// ## Primitive Types
 /// - Java primitives: `jboolean`, `jbyte`, `jchar`, `jshort`, `jint`, `jlong`, `jfloat`, `jdouble`
@@ -150,9 +155,67 @@ pub fn jni_cstr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// - Other built-in types, such as `JList` (`java.util.List`) can be overridden by mapping them to
 ///   a different type via a `type_map`
 ///
-/// ## Type Mappings
-/// - Explicit mapping block for Rust types: `type_map = { RustType => java.class.Name }`
-/// - Java types without any `type_map` entry will map to `JObject` (`java.lang.Object`)
+/// ## Type Mappings via `type_map` Block
+///
+/// A `type_map` block:
+/// - Maps Rust [Reference] type names to Java class names for use in method/field signatures.
+/// - Maps Java class names to Rust types (primarily for use with the [`bind_java_type`] and
+///   [`native_method`] macros)
+/// - Allows the definition of type aliases for more ergonomic / readable signatures.
+///
+/// Multiple `type_map` blocks will be merged, so that wrapper macros may forward-declare common
+/// type mappings to avoid repetition.
+///
+/// A `type_map` supports three types of mappings:
+///
+/// ### Reference Type Mappings
+///
+/// Map Rust [Reference] types to Java classes like `RustType => java.type.Name`:
+///
+/// ```ignore
+/// type_map = {
+///     CustomType => com.example.CustomClass,
+///     AnotherType => "com.example.AnotherClass",
+///     InnerType => com.example.Outer::Inner,
+///     AnotherInnerType => "com.example.Outer$AnotherInner",
+///     my_crate::MyType => com.example.MyType,
+/// }
+/// ```
+///
+/// The right-side Java type uses the syntax for Java Object Types described above.
+///
+/// ### Unsafe Primitive Type Mappings
+///
+/// Map Rust types to Java primitive types using the `unsafe` keyword. This is particularly useful
+/// for Rust types that transparently wrap a pointer (e.g., handles) that need to be passed to Java
+/// as a `long`:
+///
+/// ```ignore
+/// type_map = {
+///     unsafe MyHandle => long,
+///     unsafe MyBoxedPointer => long,
+///     unsafe MyRawFd => int,
+/// }
+/// ```
+///
+/// These mappings are marked `unsafe` because macros like [`bind_java_type`] and [`native_method`]
+/// cannot verify type safety between the Rust type and Java primitive type - apart from checking
+/// the size and alignment.
+///
+/// ### Type Aliases
+///
+/// Creates aliases for existing type mappings using the `typealias` keyword. This can improve
+/// readability in signatures before defining full type bindings:
+///
+/// ```ignore
+/// type_map = {
+///     MyType => com.example.MyType,
+///     typealias MyAlias => MyType,
+///     typealias MyObjectAlias => JObject,
+/// }
+/// ```
+///
+/// Note: Aliases for array types are not supported.
 ///
 /// # Method Signature Syntax
 ///
@@ -593,16 +656,28 @@ pub fn jni_mangle(
     mangle::jni_mangle2(attr.into(), item.into()).into()
 }
 
-/// Creates a compile-time type-checked `NativeMethod` descriptor for a native method.
+/// Bind a single native method to a Rust function with type safety and optionally export it.
 ///
-/// This macro generates a `NativeMethod` struct with a compile-time guarantee that the
-/// provided function pointer matches the JNI signature.
+/// This macro can do the following:
+/// - Generate a `NativeMethod` struct with type-checked function pointer
+/// - Optionally wrap the implementation with `catch_unwind` (via `EnvUnowned::with_env`) and unwrap
+///   any returned `Result` with an `ErrorPolicy` (such as `ThrowRuntimeExAndDefault`)
+/// - Optionally generate a JNI export symbol for the method
 ///
-/// By default the native method implementation is automatically wrapped with a
-/// call to `EnvUnowned::with_env` and any returned `Result` is unwrapped with
-/// an `ErrorPolicy` (default `ThrowRuntimeExAndDefault`).
+/// Firstly, this macro always generates a `NativeMethod` struct with a compile-time guarantee that
+/// the provided function pointer matches the JNI signature.
 ///
-/// It also optionally generates a JNI export symbol for the method.
+/// By default the native method implementation is automatically wrapped with a call to
+/// `EnvUnowned::with_env` and any returned `Result` is unwrapped with an `ErrorPolicy` (default
+/// `ThrowRuntimeExAndDefault`).
+///
+/// If a `java_type` name is specified, it can also generate a JNI export symbol for the method.
+///
+/// This can be used as an alternative to the `bind_java_type!` macro if you only have a few native
+/// methods to bind and offers stronger type safety than the `#[jni_mangle]` attribute macro.
+///
+/// The signature and type mappings syntax is compatible with the `jni_sig!` and `bind_java_type!`
+/// macros which makes it easy to share type mapping definitions or migrate between them.
 ///
 /// # Syntax
 ///
@@ -611,13 +686,13 @@ pub fn jni_mangle(
 /// ```ignore
 /// native_method! {
 ///     [jni = <path>,]                 // Override jni crate path (default: auto-detected, must come first)
-///     [rust_type = <Type>,]           // Type for 'this' parameter (default: JObject)
+///     [rust_type = <Type>,]           // Type for 'this' parameter, for instance methods (default: JObject)
 ///     [java_type = <Type>,]           // Fully-qualified Java class name (required if export = true)
-///     [name = "<methodName>",]        // Java method name
+///     [name = "<methodName>",]        // Java method name (default: snake_case to lowerCamelCase of Rust fn name)
 ///     [type_map = { ... },]           // Type mappings for custom types
 ///     [sig = (args) -> ret,]          // JNI signature (see `jni_sig!` macro for syntax)
 ///     [static = true,]                // Indicates static method with a `class` parameter instead of `this`
-///     [export = true | "Java_name",]  // Generate mangled JNI export symbol like `Java_package_Class_method` that JVM can resolve (requires `java_type`)
+///     [export = true | "Java_name",]  // Generate mangled JNI export symbol like `Java_package_Class_method` that JVM can resolve (requires `java_type` if true)
 ///     [fn = <function_path>,]         // Path to Rust function
 ///     [error_policy = <Policy>,]      // ErrorPolicy for unwrapping Result (default: ThrowRuntimeExAndDefault)
 ///
@@ -629,16 +704,24 @@ pub fn jni_mangle(
 /// # Properties
 ///
 /// - `jni` - Optional override for the jni crate path (must come first if provided)
-/// - `rust_type` - Optional type for the `this` parameter (e.g., `MyType`). If omitted, uses `JObject`
-/// - `java_type` - Fully-qualified Java class name, required in combination with `export = true` / `extern` native methods
-/// - `name` - The Java method name as a string literal
+/// - `rust_type` - Optional type for the `this` parameter (e.g., `MyType`). If omitted, uses
+///   `JObject`
+/// - `java_type` - Fully-qualified Java class name, required in combination with `export = true` /
+///   `extern` native methods
+/// - `name` - The Java method name as a string literal ( defaults to snake_case to lowerCamelCase
+///    conversion of the Rust function name)
 /// - `type_map` - Optional type mappings from Rust types to Java class names
 /// - `sig` - The method signature (see [`jni_sig!`] macro for syntax)
-/// - `fn` - Path to the Rust function that implements this native method (defaults to `RustType::method_name` if shorthand syntax is used)
-/// - `static` - Indicates that this is a static method (emits a `class` parameter instead of `this`)
-/// - `export` - If `true` or a string literal like `"Java_package_Class_method"`, generates a JNI export symbol for the method (requires `java_type`)
-/// - `raw` - If specified, the function receives a raw `EnvUnowned` instead of `&mut Env`, with no `catch_unwind` wrapper and does not return a `Result`
-/// - `error_policy` - The `ErrorPolicy` to use when unwrapping the `Result` returned by a non-raw implementation (default: `ThrowRuntimeExAndDefault`)
+/// - `fn` - Path to the Rust function that implements this native method (defaults to
+///   `RustType::method_name` if shorthand syntax is used)
+/// - `static` - Indicates that this is a static method (emits a `class` parameter instead of
+///   `this`)
+/// - `export` - If `true` or a string literal like `"Java_package_Class_method"`, generates a JNI
+///   export symbol for the method (requires `java_type`)
+/// - `raw` - If specified, the function receives a raw `EnvUnowned` instead of `&mut Env`, with no
+///   `catch_unwind` wrapper and does not return a `Result`
+/// - `error_policy` - The `ErrorPolicy` to use when unwrapping the `Result` returned by a non-raw
+///   implementation (default: `ThrowRuntimeExAndDefault`)
 ///
 /// ## Shorthand syntax
 ///
@@ -654,12 +737,15 @@ pub fn jni_mangle(
 /// - Converts `method_name` from snake_case to lowerCamelCase for the Java method `name`
 /// - Uses `RustType::method_name` as the `fn` path unless overridden
 /// - `static` indicates a static method (emits a `class` parameter instead of `this`)
-/// - `raw` indicates the function receives a raw `EnvUnowned` instead of `&mut Env`, with no `catch_unwind` wrapper and does not return a `Result`
-/// - `extern` says that the function should have a JNI mangled export symbol generated (`java_type` must also be provided)
+/// - `raw` indicates the function receives a raw `EnvUnowned` instead of `&mut Env`, with no
+///   `catch_unwind` wrapper and does not return a `Result`
+/// - `extern` says that the function should have a JNI mangled export symbol generated (`java_type`
+///   must also be provided)
 ///
 /// # Non-raw Function Signature Requirements
 ///
-/// If `raw` is not specified, the function must return a `Result` and accept a mutable `Env` reference.
+/// If `raw` is not specified, the function must return a `Result` and accept a mutable `Env`
+/// reference.
 ///
 /// Non-static, instance method signature:
 ///
@@ -697,7 +783,8 @@ pub fn jni_mangle(
 ///
 /// # Raw Function Signature Requirements
 ///
-/// If `raw` is specified, the function must accept an `EnvUnowned` parameter and return the exact type specified in the JNI signature.
+/// If `raw` is specified, the function must accept an `EnvUnowned` parameter and return the exact
+/// type specified in the JNI signature.
 ///
 /// Note that in this case there is no `catch_unwind` wrapper and no automatic error handling.
 ///
@@ -739,21 +826,22 @@ pub fn jni_mangle(
 ///
 /// # Type Safety
 ///
-/// The macro generates a wrapper function with the exact signature required by JNI,
-/// and then calls your implementation function through it. This ensures:
+/// The macro generates a wrapper function with the exact signature required by JNI, and then calls
+/// your implementation function through it. This ensures:
 ///
 /// - The function pointer passed to `NativeMethod::from_raw_parts` has the correct ABI
 /// - Parameter types match the JNI signature
 /// - Return type matches the JNI signature
 /// - Any type mismatch results in a compile-time error
 ///
-/// **Note:** This macro can not automatically check whether the native method is
-/// `static` or not and so it's important that the `static` property is set correctly
-/// to ensure the type for the second parameter (`this` vs `class`) is correct.
+/// **Note:** This macro can not automatically check whether the native method is `static` or not
+/// and so it's important that the `static` property is set correctly to ensure the type for the
+/// second parameter (`this` vs `class`) is correct.
 ///
 /// # See Also
 ///
-/// - [`NativeMethod`](https://docs.rs/jni/latest/jni/struct.NativeMethod.html) - The struct created by this macro
+/// - [`NativeMethod`](https://docs.rs/jni/latest/jni/struct.NativeMethod.html)
+///   - The struct created by this macro
 #[proc_macro]
 pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     native_method::native_method_impl(input.into())
