@@ -610,15 +610,16 @@ pub fn jni_mangle(
 ///
 /// ```ignore
 /// native_method! {
-///     [jni = <path>,]          // Override jni crate path (default: auto-detected, must come first)
-///     [rust_type = <Type>,]    // Type for 'this' parameter (default: JObject)
-///     [java_type = <Type>,]    // Fully-qualified Java class name (required if export = true)
-///     [name = "<methodName>",] // Java method name
-///     [sig = (args) -> ret,]   // JNI signature (see `jni_sig!` macro for syntax)
-///     [static = true,]         // Indicates static method with a `class` parameter instead of `this`
-///     [export = true,]         // Generate mangled JNI export symbol like `Java_package_Class_method` that JVM can resolve (requires `java_type`)
-///     [fn = <function_path>,]  // Path to Rust function
-///     [type_map = { ... },]    // Type mappings for custom types
+///     [jni = <path>,]                 // Override jni crate path (default: auto-detected, must come first)
+///     [rust_type = <Type>,]           // Type for 'this' parameter (default: JObject)
+///     [java_type = <Type>,]           // Fully-qualified Java class name (required if export = true)
+///     [name = "<methodName>",]        // Java method name
+///     [type_map = { ... },]           // Type mappings for custom types
+///     [sig = (args) -> ret,]          // JNI signature (see `jni_sig!` macro for syntax)
+///     [static = true,]                // Indicates static method with a `class` parameter instead of `this`
+///     [export = true | "Java_name",]  // Generate mangled JNI export symbol like `Java_package_Class_method` that JVM can resolve (requires `java_type`)
+///     [fn = <function_path>,]         // Path to Rust function
+///     [error_policy = <Policy>,]      // ErrorPolicy for unwrapping Result (default: ThrowRuntimeExAndDefault)
 ///
 ///     // Combine with shorthand syntax (see below):
 ///     [static] [raw] [extern] fn Type::method_name(args) -> ret,
@@ -631,9 +632,13 @@ pub fn jni_mangle(
 /// - `rust_type` - Optional type for the `this` parameter (e.g., `MyType`). If omitted, uses `JObject`
 /// - `java_type` - Fully-qualified Java class name, required in combination with `export = true` / `extern` native methods
 /// - `name` - The Java method name as a string literal
+/// - `type_map` - Optional type mappings from Rust types to Java class names
 /// - `sig` - The method signature (see [`jni_sig!`] macro for syntax)
 /// - `fn` - Path to the Rust function that implements this native method (defaults to `RustType::method_name` if shorthand syntax is used)
-/// - `type_map` - Optional type mappings from Rust types to Java class names
+/// - `static` - Indicates that this is a static method (emits a `class` parameter instead of `this`)
+/// - `export` - If `true` or a string literal like `"Java_package_Class_method"`, generates a JNI export symbol for the method (requires `java_type`)
+/// - `raw` - If specified, the function receives a raw `EnvUnowned` instead of `&mut Env`, with no `catch_unwind` wrapper and does not return a `Result`
+/// - `error_policy` - The `ErrorPolicy` to use when unwrapping the `Result` returned by a non-raw implementation (default: `ThrowRuntimeExAndDefault`)
 ///
 /// ## Shorthand syntax
 ///
