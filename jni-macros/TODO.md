@@ -1,7 +1,5 @@
 # Update rustoc jni_sig examples in lib.rs
 
-# Check TODOs in jni-macros/examples/bind_java_type_native_methods_test.rs
-
 # Add some runtime binding tests
 
 # Add some runtime tests of native method bindings

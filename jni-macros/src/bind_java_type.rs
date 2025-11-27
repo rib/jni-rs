@@ -2979,7 +2979,7 @@ fn generate_fields(
             let java_name = &field.java_name;
             let getter = &field.getter_name;
             quote! {
-                #[doc = concat!("Sets the `", #java_name, "` field.\n\nSee [`", stringify!(#getter), "`] for more details.")]
+                #[doc = concat!("Sets the `", #java_name, "` field.\n\nSee [`Self::", stringify!(#getter), "`] for more details.")]
             }
         } else if !field.setter_attrs.is_empty() {
             let attrs = &field.setter_attrs;

@@ -814,6 +814,7 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///
 /// // Implement the native methods trait
 /// impl MyTypeNativeInterface for MyTypeAPI {
+///    // Specify an `Error` type that implements `Into<jni::errors::Error>`
 ///    type Error = jni::errors::Error;
 ///    fn my_native<'local>(
 ///        env: &mut Env<'local>,
@@ -1037,6 +1038,34 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// }
 /// ```
 ///
+/// ### Field Documentation
+///
+/// Documentation placed directly above a field entry applies to the generated
+/// getter method. If only a field-level comment is provided, the setter will
+/// receive default documentation like "Sets the `field` value. See
+/// \[Self::field_getter\] for more details.").
+///
+/// You can also document the getter and setter explicitly.
+///
+/// ```ignore
+/// fields = {
+///     /// Whether the feature is enabled
+///     ///
+///     /// Applies to: `is_enabled` field getter
+///     /// Default setter doc: "Sets the `is_enabled` value".
+///     is_enabled: jboolean,
+///
+///     // Explicit getter/setter docs in block syntax
+///     user_name {
+///         sig = java.lang.String,
+///         /// Returns the user name associated with this object
+///         get = user_name,
+///         /// Updates the user name; does not allow empty values
+///         set = set_user_name,
+///     },
+/// }
+/// ```
+///
 /// ## All Method Blocks: `constructors`, `methods`, `native_methods`
 ///
 /// These blocks define constructor, method, and native method bindings using
@@ -1066,6 +1095,27 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///     [error_policy = ErrorPolicy,]  // native_methods only
 ///     [export = true | false | "CustomName",]  // native_methods only
 ///     [fn = function_path,]  // native_methods only
+/// }
+/// ```
+///
+/// ### Method Documentation
+///
+/// Any rustdoc comments placed directly above a method entry are applied to
+/// the generated method descriptor (or trait method for `native_methods`).
+///
+/// ```ignore
+/// {
+///     /// Returns the current value
+///     fn get_value() -> jint,
+///
+///     /// Creates an instance with defaults
+///     static fn create_default() -> MyType,
+///
+///     /// Returns detailed information about the current user
+///     fn get_user_info {
+///         name = "getUserDetails",
+///         sig = () -> java.lang.String,
+///     },
 /// }
 /// ```
 ///
@@ -1144,8 +1194,27 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///
 /// #### Default: Trait Implementation with Automatic Wrapping
 ///
-/// By default, trait implementations receive `&mut Env` and return `Result<T,
-/// E>`. The macro automatically wraps these implementations with:
+/// By default a `trait {MyType}NativeInterface` is generated with methods
+/// corresponding to each native method and you must implement this trait for
+/// your API struct (e.g., `MyTypeAPI`).
+///
+/// The trait will look something like this:
+///
+/// ```ignore
+/// trait MyTypeNativeInterface {
+///     type Error: Into<jni::errors::Error>;
+///
+///     fn native_add<'local>(
+///         env: &mut Env<'local>,
+///         this: MyType<'local>,
+///         a: jint,
+///         b: jint,
+///     ) -> Result<jint, Self::Error>;
+/// }
+/// ```
+///
+/// By default, the trait methods receive an `env: &mut Env` and return `Result<T,
+/// Self::Error>`. The macro automatically wraps these implementations with:
 ///
 /// 1. **Panic safety**: `catch_unwind` via `EnvUnowned::with_env`
 /// 2. **Error handling**: `ErrorPolicy` to convert `Result` to a value
@@ -1184,9 +1253,34 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// }
 /// ```
 ///
-/// #### Raw Native Methods: Direct Implementation
+/// #### Direct Function Implementation: Bypassing the Trait
 ///
-/// The `raw` qualifier bypasses the automatic wrapping. Raw methods:
+/// The `fn` property allows you to bypass the trait entirely and provide a
+/// direct function implementation for the native method.
+///
+/// ```ignore
+/// native_methods = {
+///     fn native_with_function {
+///         sig = (value: jint) -> jint,
+///         fn = my_function,
+///     },
+/// }
+///
+/// fn my_function<'local>(
+///     env: &mut Env<'local>,
+///     this: MyType<'local>,
+///     value: jint,
+/// ) -> Result<jint, jni::errors::Error> {
+///     Ok(value * 2)
+/// }
+/// ```
+///
+/// If all native methods are implemented via direct functions, then no trait
+/// is generated.
+///
+/// #### Raw Native Methods
+///
+/// The `raw` qualifier bypasses the `catch_unwind` wrapping and `ErrorPolicy` handling. Raw methods:
 /// - Receive `EnvUnowned` directly (not `&mut Env`)
 /// - Return values directly (not `Result`)
 /// - Have **no** `catch_unwind` wrapper
@@ -1218,45 +1312,6 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// }
 ///
 /// // Direct function for raw method
-/// fn my_raw_function<'local>(
-///     env: EnvUnowned<'local>,
-///     this: MyType<'local>,
-///     value: jint,
-/// ) -> jint {
-///     value * 3
-/// }
-/// ```
-///
-/// #### Direct Function Implementation: Bypassing the Trait
-///
-/// The `fn` property allows you to bypass the trait entirely and provide a
-/// direct function implementation. This works with both normal and raw methods:
-///
-/// ```ignore
-/// native_methods = {
-///     // Non-raw with direct function (still gets wrapped with catch_unwind)
-///     fn native_with_function {
-///         sig = (value: jint) -> jint,
-///         fn = my_safe_function,
-///     },
-///
-///     // Raw with direct function (no wrapping)
-///     raw fn native_raw_function {
-///         sig = (value: jint) -> jint,
-///         fn = my_raw_function,
-///     },
-/// }
-///
-/// // Non-raw function (returns Result, gets automatic error handling)
-/// fn my_safe_function<'local>(
-///     env: &mut Env<'local>,
-///     this: MyType<'local>,
-///     value: jint,
-/// ) -> Result<jint, jni::errors::Error> {
-///     Ok(value * 2)
-/// }
-///
-/// // Raw function (no Result, no catch_unwind wrapping)
 /// fn my_raw_function<'local>(
 ///     env: EnvUnowned<'local>,
 ///     this: MyType<'local>,
@@ -1459,8 +1514,9 @@ pub fn native_method(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 ///
 /// **Note:** Native method registration happens very early, after loading the
 /// class. If the class has not already been initialized through other means,
-/// this means that native methods may be registered before any Java static
-/// initializers or static blocks have run.
+/// this means that native methods will be registered before any Java static
+/// initializers or static blocks have run (and therefore those static
+/// initializers will be able to use your native methods).
 ///
 /// **Benefits of Exporting** (via `extern`/`export`):
 /// - Native methods may be resolved by the JVM immediately upon loading the
